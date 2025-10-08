@@ -1,0 +1,154 @@
+import { useState } from "react";
+import { Upload, X, File, CheckCircle2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+
+interface UploadDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+export function UploadDialog({ open, onOpenChange }: UploadDialogProps) {
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      setFiles(Array.from(e.target.files));
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (e.dataTransfer.files) {
+      setFiles(Array.from(e.dataTransfer.files));
+    }
+  };
+
+  const handleUpload = () => {
+    setUploading(true);
+    // Simulate upload
+    let progress = 0;
+    const interval = setInterval(() => {
+      progress += 10;
+      setUploadProgress(progress);
+      if (progress >= 100) {
+        clearInterval(interval);
+        setTimeout(() => {
+          setUploading(false);
+          setUploadProgress(0);
+          setFiles([]);
+          onOpenChange(false);
+        }, 500);
+      }
+    }, 200);
+  };
+
+  const removeFile = (index: number) => {
+    setFiles(files.filter((_, i) => i !== index));
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl" data-testid="dialog-upload">
+        <DialogHeader>
+          <DialogTitle>Upload Documentation</DialogTitle>
+          <DialogDescription>
+            Upload PDF, DOCX, TXT, or MD files to add to the knowledge base
+          </DialogDescription>
+        </DialogHeader>
+
+        <div
+          onDrop={handleDrop}
+          onDragOver={(e) => e.preventDefault()}
+          className="border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-primary transition-colors"
+        >
+          <Upload className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground mb-2">
+            Drag and drop files here, or click to browse
+          </p>
+          <input
+            type="file"
+            multiple
+            accept=".pdf,.docx,.txt,.md"
+            onChange={handleFileChange}
+            className="hidden"
+            id="file-upload"
+            data-testid="input-file-upload"
+          />
+          <label htmlFor="file-upload">
+            <Button variant="secondary" asChild>
+              <span>Browse Files</span>
+            </Button>
+          </label>
+        </div>
+
+        {files.length > 0 && (
+          <div className="space-y-2">
+            {files.map((file, index) => (
+              <div
+                key={index}
+                className="flex items-center justify-between p-3 bg-card rounded-lg border border-card-border"
+                data-testid={`file-item-${index}`}
+              >
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <File className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm truncate">{file.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {(file.size / 1024 / 1024).toFixed(2)} MB
+                    </p>
+                  </div>
+                </div>
+                {!uploading && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removeFile(index)}
+                    data-testid={`button-remove-file-${index}`}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                )}
+                {uploading && uploadProgress === 100 && (
+                  <CheckCircle2 className="w-5 h-5 text-chart-2" />
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {uploading && (
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span>Uploading...</span>
+              <span>{uploadProgress}%</span>
+            </div>
+            <Progress value={uploadProgress} />
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={uploading}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleUpload}
+            disabled={files.length === 0 || uploading}
+            data-testid="button-upload"
+          >
+            Upload {files.length > 0 && `(${files.length})`}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
