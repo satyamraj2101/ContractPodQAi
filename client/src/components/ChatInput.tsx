@@ -27,15 +27,15 @@ export function ChatInput({ onSendMessage, disabled = false }: ChatInputProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="border-t border-border bg-background p-4">
-      <div className="flex gap-2 max-w-5xl mx-auto">
+    <form onSubmit={handleSubmit} className="border-t border-border bg-background p-6">
+      <div className="flex gap-3 max-w-5xl mx-auto">
         <div className="flex-1 relative">
           <Textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask a question about ContractPodAI documentation..."
-            className="resize-none min-h-12 max-h-32 pr-12"
+            className="resize-none min-h-14 max-h-32 pr-14 shadow-sm"
             disabled={disabled}
             data-testid="input-chat-message"
           />
@@ -51,11 +51,12 @@ export function ChatInput({ onSendMessage, disabled = false }: ChatInputProps) {
         </div>
         <Button
           type="submit"
-          size="icon"
+          size="lg"
           disabled={!message.trim() || disabled}
+          className="h-14 px-6 shadow-lg shadow-primary/20"
           data-testid="button-send-message"
         >
-          <Send className="w-4 h-4" />
+          <Send className="w-5 h-5" />
         </Button>
       </div>
     </form>

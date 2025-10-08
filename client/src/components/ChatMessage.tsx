@@ -20,23 +20,23 @@ export function ChatMessage({ role, content, sources, timestamp }: ChatMessagePr
   const isUser = role === "user";
 
   return (
-    <div className={`flex gap-4 ${isUser ? "justify-end" : "justify-start"} mb-6`}>
+    <div className={`flex gap-5 ${isUser ? "justify-end" : "justify-start"} mb-8`}>
       {!isUser && (
         <div className="flex-shrink-0">
-          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-            <Bot className="w-5 h-5 text-primary" />
+          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-md shadow-primary/20">
+            <Bot className="w-5 h-5 text-primary-foreground" />
           </div>
         </div>
       )}
       
       <div className={`flex flex-col ${isUser ? "items-end" : "items-start"} max-w-3xl`}>
-        <div className="text-xs text-muted-foreground mb-2">{timestamp}</div>
+        <div className="text-xs font-medium text-muted-foreground mb-2.5 px-1">{timestamp}</div>
         
         <div
-          className={`rounded-2xl px-4 py-3 ${
+          className={`rounded-2xl px-5 py-4 ${
             isUser
-              ? "bg-primary/15 text-foreground"
-              : "bg-card border border-card-border"
+              ? "bg-gradient-to-br from-primary/15 to-primary/10 text-foreground shadow-sm"
+              : "bg-card border border-card-border shadow-md"
           }`}
         >
           {isUser ? (
@@ -49,19 +49,19 @@ export function ChatMessage({ role, content, sources, timestamp }: ChatMessagePr
         </div>
 
         {sources && sources.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-3">
+          <div className="flex flex-wrap gap-2.5 mt-4">
             {sources.map((source) => (
               <Badge
                 key={source.id}
                 variant="outline"
-                className="cursor-pointer hover-elevate active-elevate-2"
+                className="cursor-pointer hover-elevate active-elevate-2 shadow-sm px-3 py-1.5"
                 onClick={() => window.open(source.url, '_blank')}
                 data-testid={`citation-${source.id}`}
               >
-                <FileText className="w-3 h-3 mr-1.5" />
-                <span className="truncate max-w-[200px]">{source.filename}</span>
-                {source.page && <span className="text-muted-foreground ml-1">(p.{source.page})</span>}
-                <ExternalLink className="w-3 h-3 ml-1.5" />
+                <FileText className="w-3.5 h-3.5 mr-2" />
+                <span className="truncate max-w-[200px] font-medium">{source.filename}</span>
+                {source.page && <span className="text-muted-foreground ml-1.5">(p.{source.page})</span>}
+                <ExternalLink className="w-3 h-3 ml-2" />
               </Badge>
             ))}
           </div>
@@ -70,7 +70,7 @@ export function ChatMessage({ role, content, sources, timestamp }: ChatMessagePr
 
       {isUser && (
         <div className="flex-shrink-0">
-          <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-muted to-muted/70 flex items-center justify-center shadow-sm">
             <User className="w-5 h-5 text-muted-foreground" />
           </div>
         </div>

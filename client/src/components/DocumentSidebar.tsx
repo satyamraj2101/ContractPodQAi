@@ -21,9 +21,10 @@ interface Document {
 interface DocumentSidebarProps {
   documents: Document[];
   onUploadClick: () => void;
+  showUploadButton?: boolean;
 }
 
-export function DocumentSidebar({ documents, onUploadClick }: DocumentSidebarProps) {
+export function DocumentSidebar({ documents, onUploadClick, showUploadButton = true }: DocumentSidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [isOpen, setIsOpen] = useState(true);
 
@@ -36,10 +37,12 @@ export function DocumentSidebar({ documents, onUploadClick }: DocumentSidebarPro
       <div className="p-4 border-b border-sidebar-border">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold text-sidebar-foreground">Documents</h2>
-          <Button size="sm" onClick={onUploadClick} data-testid="button-upload-sidebar">
-            <Upload className="w-4 h-4 mr-2" />
-            Upload
-          </Button>
+          {showUploadButton && (
+            <Button size="sm" onClick={onUploadClick} data-testid="button-upload-sidebar">
+              <Upload className="w-4 h-4 mr-2" />
+              Upload
+            </Button>
+          )}
         </div>
         
         <div className="relative">

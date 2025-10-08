@@ -9,6 +9,10 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { useToast } from "@/hooks/use-toast";
+import { useMutation } from "@tanstack/react-query";
+import { queryClient } from "@/lib/queryClient";
+import { isUnauthorizedError } from "@/lib/authUtils";
 
 interface UploadDialogProps {
   open: boolean;
@@ -17,8 +21,57 @@ interface UploadDialogProps {
 
 export function UploadDialog({ open, onOpenChange }: UploadDialogProps) {
   const [files, setFiles] = useState<File[]>([]);
-  const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const { toast } = useToast();
+
+  const uploadMutation = useMutation({
+    mutationFn: async (files: File[]) => {
+      const formData = new FormData();
+      files.forEach((file) => formData.append('files', file));
+      
+      const response = await fetch('/api/documents/upload', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`${response.status}: ${text}`);
+      }
+
+      return await response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: `${files.length} file(s) uploaded successfully`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/documents"] });
+      setFiles([]);
+      setUploadProgress(0);
+      onOpenChange(false);
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Upload Failed",
+        description: error.message || "Failed to upload documents",
+        variant: "destructive",
+      });
+      setUploadProgress(0);
+    },
+  });
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -34,22 +87,21 @@ export function UploadDialog({ open, onOpenChange }: UploadDialogProps) {
   };
 
   const handleUpload = () => {
-    setUploading(true);
-    // Simulate upload
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += 10;
-      setUploadProgress(progress);
-      if (progress >= 100) {
-        clearInterval(interval);
-        setTimeout(() => {
-          setUploading(false);
-          setUploadProgress(0);
-          setFiles([]);
-          onOpenChange(false);
-        }, 500);
-      }
+    if (files.length === 0) return;
+    
+    // Simulate progress
+    setUploadProgress(10);
+    const progressInterval = setInterval(() => {
+      setUploadProgress(prev => {
+        if (prev >= 90) {
+          clearInterval(progressInterval);
+          return 90;
+        }
+        return prev + 10;
+      });
     }, 200);
+
+    uploadMutation.mutate(files);
   };
 
   const removeFile = (index: number) => {
@@ -108,7 +160,7 @@ export function UploadDialog({ open, onOpenChange }: UploadDialogProps) {
                     </p>
                   </div>
                 </div>
-                {!uploading && (
+                {!uploadMutation.isPending && (
                   <Button
                     variant="ghost"
                     size="icon"
@@ -118,7 +170,7 @@ export function UploadDialog({ open, onOpenChange }: UploadDialogProps) {
                     <X className="w-4 h-4" />
                   </Button>
                 )}
-                {uploading && uploadProgress === 100 && (
+                {uploadMutation.isPending && uploadProgress === 100 && (
                   <CheckCircle2 className="w-5 h-5 text-chart-2" />
                 )}
               </div>
@@ -126,10 +178,10 @@ export function UploadDialog({ open, onOpenChange }: UploadDialogProps) {
           </div>
         )}
 
-        {uploading && (
+        {uploadMutation.isPending && (
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span>Uploading...</span>
+              <span>Uploading and processing...</span>
               <span>{uploadProgress}%</span>
             </div>
             <Progress value={uploadProgress} />
@@ -137,12 +189,16 @@ export function UploadDialog({ open, onOpenChange }: UploadDialogProps) {
         )}
 
         <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={uploading}>
+          <Button 
+            variant="outline" 
+            onClick={() => onOpenChange(false)} 
+            disabled={uploadMutation.isPending}
+          >
             Cancel
           </Button>
           <Button
             onClick={handleUpload}
-            disabled={files.length === 0 || uploading}
+            disabled={files.length === 0 || uploadMutation.isPending}
             data-testid="button-upload"
           >
             Upload {files.length > 0 && `(${files.length})`}

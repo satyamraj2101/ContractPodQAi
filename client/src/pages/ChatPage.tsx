@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Bot } from "lucide-react";
 import { ChatMessage } from "@/components/ChatMessage";
 import { ChatInput } from "@/components/ChatInput";
@@ -7,7 +7,7 @@ import { UploadDialog } from "@/components/UploadDialog";
 import { EmptyState } from "@/components/EmptyState";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -17,6 +17,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { LogOut, User } from "lucide-react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { isUnauthorizedError } from "@/lib/authUtils";
 
 interface Message {
   id: string;
@@ -31,184 +36,173 @@ interface Message {
   timestamp: string;
 }
 
+interface Document {
+  id: string;
+  filename: string;
+  originalFilename: string;
+  fileType: string;
+  fileSize: string;
+  uploadDate: string;
+}
+
 export default function ChatPage() {
+  const { user } = useAuth();
+  const { toast } = useToast();
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
-  
-  // todo: remove mock functionality
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      role: "user",
-      content: "How do I create a new contract template in ContractPodAI?",
-      timestamp: "2:34 PM"
+  const [messages, setMessages] = useState<Message[]>([]);
+
+  // Load chat history
+  const { data: chatHistory, isLoading: isLoadingHistory } = useQuery<any[]>({
+    queryKey: ["/api/chat/history"],
+    retry: false,
+  });
+
+  // Load documents
+  const { data: documents = [] } = useQuery<Document[]>({
+    queryKey: ["/api/documents"],
+    retry: false,
+  });
+
+  // Send message mutation
+  const sendMessageMutation = useMutation({
+    mutationFn: async (question: string) => {
+      const res = await apiRequest("POST", "/api/chat/message", { question });
+      return await res.json();
     },
-    {
-      id: "2",
-      role: "assistant",
-      content: `To create a new contract template in ContractPodAI, follow these steps:
-
-1. Navigate to the **Templates** section in the main menu
-2. Click on **Create New Template** button
-3. Choose your template type (MSA, NDA, Service Agreement, etc.)
-4. Use the template editor to add clauses and variables
-
-You can customize the template with dynamic fields and approval workflows.`,
-      sources: [
-        {
-          id: "1",
-          filename: "ContractPodAI_User_Guide.pdf",
-          page: 24,
-          url: "#"
-        },
-        {
-          id: "2",
-          filename: "Template_Management_Overview.pdf",
-          page: 5,
-          url: "#"
-        }
-      ],
-      timestamp: "2:34 PM"
+    onSuccess: (data: any) => {
+      // Add both messages to the UI
+      const userMsg: Message = {
+        id: data.userMessage.id,
+        role: "user",
+        content: data.userMessage.content,
+        timestamp: new Date(data.userMessage.timestamp).toLocaleTimeString('en-US', { 
+          hour: 'numeric', 
+          minute: '2-digit' 
+        })
+      };
+      
+      const aiMsg: Message = {
+        id: data.assistantMessage.id,
+        role: "assistant",
+        content: data.assistantMessage.content,
+        sources: data.assistantMessage.sources,
+        timestamp: new Date(data.assistantMessage.timestamp).toLocaleTimeString('en-US', { 
+          hour: 'numeric', 
+          minute: '2-digit' 
+        })
+      };
+      
+      setMessages(prev => [...prev, userMsg, aiMsg]);
+      queryClient.invalidateQueries({ queryKey: ["/api/chat/history"] });
     },
-    {
-      id: "3",
-      role: "user",
-      content: "What are the different approval workflow types available?",
-      timestamp: "2:36 PM"
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: "Failed to send message. Please try again.",
+        variant: "destructive",
+      });
     },
-    {
-      id: "4",
-      role: "assistant",
-      content: `ContractPodAI supports three main approval workflow types:
+  });
 
-**1. Sequential Approval**
-- Requests go through approvers one by one in order
-- Each approver must complete their review before the next
-
-**2. Parallel Approval**
-- All approvers receive the request simultaneously
-- Approval completes when all approvers have reviewed
-
-**3. Dynamic Approval**
-- Routing changes based on contract attributes
-- Conditional logic determines the approval path
-
-You can configure these workflows in the Admin settings under Workflow Configuration.`,
-      sources: [
-        {
-          id: "3",
-          filename: "Workflow_Configuration_Guide.pdf",
-          page: 12,
-          url: "#"
-        }
-      ],
-      timestamp: "2:36 PM"
+  // Load chat history into messages
+  useEffect(() => {
+    if (chatHistory) {
+      const formattedMessages: Message[] = chatHistory.map((msg: any) => ({
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        sources: msg.sources,
+        timestamp: new Date(msg.timestamp).toLocaleTimeString('en-US', { 
+          hour: 'numeric', 
+          minute: '2-digit' 
+        })
+      }));
+      setMessages(formattedMessages);
     }
-  ]);
-
-  const documents = [
-    {
-      id: "1",
-      filename: "ContractPodAI_User_Guide.pdf",
-      fileType: "PDF",
-      fileSize: "2.4 MB",
-      uploadDate: "Oct 5, 2025"
-    },
-    {
-      id: "2",
-      filename: "API_Integration_Guide.pdf",
-      fileType: "PDF",
-      fileSize: "1.8 MB",
-      uploadDate: "Oct 3, 2025"
-    },
-    {
-      id: "3",
-      filename: "Admin_Dashboard_Manual.docx",
-      fileType: "DOCX",
-      fileSize: "856 KB",
-      uploadDate: "Sep 28, 2025"
-    },
-    {
-      id: "4",
-      filename: "Template_Management_Overview.pdf",
-      fileType: "PDF",
-      fileSize: "1.2 MB",
-      uploadDate: "Sep 25, 2025"
-    },
-    {
-      id: "5",
-      filename: "Workflow_Configuration_Guide.pdf",
-      fileType: "PDF",
-      fileSize: "3.1 MB",
-      uploadDate: "Sep 20, 2025"
-    }
-  ];
+  }, [chatHistory]);
 
   const handleSendMessage = (content: string) => {
-    const newUserMessage: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      content,
-      timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-    };
-    
-    setMessages([...messages, newUserMessage]);
-    
-    // Simulate AI response
-    setTimeout(() => {
-      const aiResponse: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: "This is a simulated response. In the full application, this will be powered by OpenAI and will provide accurate answers based on your documentation.",
-        sources: [
-          {
-            id: "sim-1",
-            filename: "ContractPodAI_User_Guide.pdf",
-            page: 10,
-            url: "#"
-          }
-        ],
-        timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-      };
-      setMessages(prev => [...prev, aiResponse]);
-    }, 1000);
+    sendMessageMutation.mutate(content);
   };
 
+  const isAdmin = (user as any)?.isAdmin || false;
+  const userInitials = (user as any)?.firstName && (user as any)?.lastName 
+    ? `${(user as any).firstName[0]}${(user as any).lastName[0]}`.toUpperCase()
+    : (user as any)?.email?.[0]?.toUpperCase() || 'U';
+
   return (
-    <div className="flex h-screen">
-      <DocumentSidebar
-        documents={documents}
-        onUploadClick={() => setUploadDialogOpen(true)}
-      />
+    <div className="flex h-screen bg-background">
+      {/* Enhanced Sidebar with refined spacing */}
+      <div className="border-r border-border shadow-lg">
+        <DocumentSidebar
+          documents={documents.map(doc => ({
+            id: doc.id,
+            filename: doc.originalFilename,
+            fileType: doc.fileType,
+            fileSize: doc.fileSize,
+            uploadDate: new Date(doc.uploadDate).toLocaleDateString('en-US', { 
+              month: 'short', 
+              day: 'numeric', 
+              year: 'numeric' 
+            })
+          }))}
+          onUploadClick={() => setUploadDialogOpen(true)}
+          showUploadButton={isAdmin}
+        />
+      </div>
       
       <div className="flex-1 flex flex-col">
-        <header className="h-16 border-b border-border bg-background px-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
+        {/* Enhanced Header with gradient and better spacing */}
+        <header className="h-20 border-b border-border bg-gradient-to-r from-background via-background to-primary/5 px-8 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-lg shadow-primary/20">
               <Bot className="w-6 h-6 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="font-semibold text-lg">ContractPodAI Assistant</h1>
-              <p className="text-xs text-muted-foreground">Documentation Q&A</p>
+              <h1 className="font-semibold text-xl">ContractPodAI Assistant</h1>
+              <p className="text-sm text-muted-foreground">Documentation Q&A</p>
             </div>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <ThemeToggle />
+            <div className="h-6 w-px bg-border" />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" data-testid="button-user-menu">
-                  <Avatar className="w-8 h-8">
-                    <AvatarFallback className="bg-primary/10 text-primary">JD</AvatarFallback>
+                <Button variant="ghost" size="icon" className="relative" data-testid="button-user-menu">
+                  <Avatar className="w-9 h-9">
+                    <AvatarImage src={(user as any)?.profileImageUrl || undefined} className="object-cover" />
+                    <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-primary font-medium">
+                      {userInitials}
+                    </AvatarFallback>
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align="end" className="w-56">
+                <div className="px-2 py-3 border-b border-border">
+                  <p className="text-sm font-medium">{(user as any)?.firstName} {(user as any)?.lastName}</p>
+                  <p className="text-xs text-muted-foreground truncate">{(user as any)?.email}</p>
+                  {isAdmin && (
+                    <p className="text-xs text-primary font-medium mt-1">Admin</p>
+                  )}
+                </div>
                 <DropdownMenuItem data-testid="button-profile">
                   <User className="w-4 h-4 mr-2" />
                   Profile
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem data-testid="button-logout">
+                <DropdownMenuItem onClick={() => window.location.href = '/api/logout'} data-testid="button-logout">
                   <LogOut className="w-4 h-4 mr-2" />
                   Logout
                 </DropdownMenuItem>
@@ -217,22 +211,37 @@ You can configure these workflows in the Admin settings under Workflow Configura
           </div>
         </header>
 
-        <ScrollArea className="flex-1">
-          <div className="max-w-5xl mx-auto px-6 py-8">
-            {messages.length === 0 ? (
+        {/* Enhanced Chat Area with better spacing */}
+        <ScrollArea className="flex-1 bg-gradient-to-b from-background to-background/95">
+          <div className="max-w-5xl mx-auto px-8 py-12">
+            {isLoadingHistory ? (
+              <div className="flex items-center justify-center h-96">
+                <div className="animate-pulse text-muted-foreground">Loading chat history...</div>
+              </div>
+            ) : messages.length === 0 ? (
               <EmptyState type="chat" />
             ) : (
-              messages.map((message) => (
-                <ChatMessage key={message.id} {...message} />
-              ))
+              <div className="space-y-8">
+                {messages.map((message) => (
+                  <ChatMessage key={message.id} {...message} />
+                ))}
+              </div>
             )}
           </div>
         </ScrollArea>
 
-        <ChatInput onSendMessage={handleSendMessage} />
+        {/* Enhanced Input with shadow */}
+        <div className="border-t border-border shadow-2xl">
+          <ChatInput 
+            onSendMessage={handleSendMessage} 
+            disabled={sendMessageMutation.isPending}
+          />
+        </div>
       </div>
 
-      <UploadDialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen} />
+      {isAdmin && (
+        <UploadDialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen} />
+      )}
     </div>
   );
 }
