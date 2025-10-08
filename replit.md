@@ -49,10 +49,11 @@ Preferred communication style: Simple, everyday language.
 - RAG (Retrieval Augmented Generation) pattern for context-aware responses
 
 **Authentication**
-- **Replit Auth** integration using OpenID Connect
-- Passport.js strategy for OAuth flow
-- Role-based access control with admin permissions
-- Secure session management with httpOnly cookies
+- **Email/Password Authentication** - bcrypt password hashing, admin-controlled user provisioning
+- **Session Management** - express-session with PostgreSQL store (connect-pg-simple)
+- **Role-Based Access Control** - Admin flags for privileged operations
+- **Password Reset Flow** - User requests, admin approves with optional notes
+- **Secure Practices** - httpOnly cookies, server-side hashing, session timeouts
 
 ### Data Storage
 
@@ -62,11 +63,15 @@ Preferred communication style: Simple, everyday language.
 - Connection pooling for efficient resource usage
 
 **Schema Design**
-- `users` - User profiles with admin flags
-- `sessions` - Express session storage
+- `users` - User profiles with email, hashed passwords, employee IDs, mobile, admin flags, active status
+- `sessions` - Express session storage via connect-pg-simple
+- `conversations` - User conversation containers (5 max per user)
+- `conversationMessages` - Individual messages within conversations with role (user/assistant)
+- `passwordResetRequests` - Admin-approved password reset workflow with notes
+- `userActivity` - 30-day rolling window of user actions (login, message sent, document uploaded)
+- `messageFeedback` - User feedback on AI responses (helpful/not helpful with optional notes)
 - `documents` - Uploaded file metadata
 - `documentChunks` - Chunked text with embeddings for vector search
-- `chatMessages` - Conversation history with user associations
 
 **Data Flow**
 1. User uploads document → stored in uploads directory
@@ -74,24 +79,68 @@ Preferred communication style: Simple, everyday language.
 3. Text extraction → chunked and embedded → stored in documentChunks
 4. User question → embedded → semantic search → retrieve relevant chunks
 5. Chunks + question → sent to Gemini → AI response with citations
-6. Message exchange → stored in chatMessages table
+6. Message exchange → stored in conversationMessages table with conversation context
+
+### Key Features
+
+**User Management**
+- Admin-controlled user provisioning (create users with full profile data)
+- User activation/deactivation by admins
+- User deletion by admins
+- Profile editing (name, employee ID, mobile)
+- Password change (requires current password verification)
+
+**Password Reset Flow**
+- Users request password reset with email
+- Admins review pending requests in Admin Panel
+- Admins approve or reject with optional notes
+- Approved resets allow user to set new password
+- Security: Admin approval required for all resets
+
+**Conversation System**
+- 5 conversations maximum per user
+- Create new conversations automatically on first message
+- Delete conversations
+- Messages stored with conversation context
+- Conversation-based chat history
+
+**Admin Panel**
+- User management: create, activate/deactivate, delete users
+- Password reset approvals: review pending requests, approve/reject with notes
+- Activity tracking: 30-day rolling window of user actions
+- Feedback viewing: see all user feedback on AI responses
+
+**Activity Tracking**
+- Track login events
+- Track message sent events
+- Track document uploads
+- 30-day rolling retention
+- Admin visibility into user engagement
+
+**Feedback System**
+- Users can rate AI responses (helpful/not helpful)
+- Optional feedback notes
+- Admin visibility for quality monitoring
 
 ### External Dependencies
 
 **AI & ML Services**
 - **Google Gemini AI API** - Natural language understanding and generation
-- Embedding generation for semantic search
+- Free tier operation using `gemini-1.5-flash` model
+- Embedding generation for semantic search (text-embedding-004)
 - Context-aware response generation with source attribution
+- Vector similarity threshold: 0.6 for relevant chunk retrieval
 
 **Database**
 - **Neon PostgreSQL** - Serverless PostgreSQL database
 - WebSocket support for real-time connections
 - Automatic scaling and connection pooling
+- Session storage via connect-pg-simple
 
 **Authentication**
-- **Replit Auth (OpenID Connect)** - User authentication service
-- OAuth 2.0 flow with JWT tokens
-- User profile data retrieval
+- **Custom Email/Password** - bcrypt hashing, session-based auth
+- No external OAuth dependencies
+- Admin-controlled user lifecycle
 
 **Development Tools**
 - **Replit-specific plugins** - Cartographer, dev banner, runtime error overlay
