@@ -268,21 +268,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Build context from relevant chunks
       const context = relevantChunks.map(chunk => chunk.chunkText).join('\n\n');
+      
+      // Determine if we have relevant context (non-empty and meaningful)
+      const hasRelevantContext = context.trim().length > 0 && relevantChunks.length > 0;
 
       // Generate AI response using Gemini
       const chatModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      const prompt = `You are a helpful documentation assistant for ContractPodAI, a contract lifecycle management platform. Answer questions based on the provided documentation context. If the context doesn't contain relevant information, say so clearly. Format your responses in markdown for better readability.
+      const prompt = hasRelevantContext 
+        ? `You are a helpful documentation assistant for ContractPodAI, a contract lifecycle management platform. Answer questions based on the provided documentation context. If the context doesn't contain relevant information, say so clearly. Format your responses in markdown for better readability.
 
 Context from documentation:
 ${context}
+
+Question: ${question}`
+        : `You are a helpful documentation assistant for ContractPodAI, a contract lifecycle management platform. The user asked a question but no relevant documentation was found in the knowledge base.
+
+Please politely inform the user that you don't have information about their question in the available documentation, and suggest they:
+1. Try rephrasing their question
+2. Check if the documentation has been uploaded
+3. Contact the admin if they believe relevant documents are missing
 
 Question: ${question}`;
 
       const result = await chatModel.generateContent(prompt);
       const aiResponse = result.response.text() || "I couldn't generate a response.";
 
-      // Build sources from relevant chunks with actual document names
-      const sources = await Promise.all(
+      // Only build sources if we found relevant context
+      const sources = hasRelevantContext ? await Promise.all(
         relevantChunks.map(async (chunk, index) => {
           const doc = await storage.getDocument(chunk.documentId);
           return {
@@ -292,7 +304,7 @@ Question: ${question}`;
             url: `/api/documents/${chunk.documentId}`,
           };
         })
-      );
+      ) : [];
 
       // Save assistant message
       const assistantMessage = await storage.insertChatMessage({

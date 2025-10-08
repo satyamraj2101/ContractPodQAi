@@ -139,6 +139,10 @@ export class DatabaseStorage implements IStorage {
   async searchDocumentChunks(query: string, queryEmbedding: number[]): Promise<DocumentChunk[]> {
     const chunks = await db.select().from(documentChunks);
     
+    // Similarity threshold - only return chunks above this score
+    // This prevents irrelevant documents from being cited
+    const SIMILARITY_THRESHOLD = 0.6; // 60% similarity required
+    
     // Calculate cosine similarity for each chunk
     const chunksWithSimilarity = chunks
       .filter(chunk => chunk.embedding) // Only chunks with embeddings
@@ -147,6 +151,7 @@ export class DatabaseStorage implements IStorage {
         const similarity = this.cosineSimilarity(queryEmbedding, embedding);
         return { chunk, similarity };
       })
+      .filter(item => item.similarity >= SIMILARITY_THRESHOLD) // Only keep relevant results
       .sort((a, b) => b.similarity - a.similarity) // Sort by similarity desc
       .slice(0, 5); // Return top 5 matches
     
