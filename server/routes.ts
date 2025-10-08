@@ -21,12 +21,12 @@ const upload = multer({
   dest: "uploads/",
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter: (_req, file, cb) => {
-    const allowedTypes = ['.pdf', '.ppt', '.pptx', '.txt', '.md', '.xlsx', '.xls', '.html', '.htm'];
+    const allowedTypes = ['.pdf', '.ppt', '.pptx', '.docx', '.txt', '.md', '.xlsx', '.xls', '.html', '.htm'];
     const ext = path.extname(file.originalname).toLowerCase();
     if (allowedTypes.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type. Only PDF, PPT, TXT, MD, XLSX, and HTML files are allowed.'));
+      cb(new Error('Invalid file type. Only PDF, PPT, PPTX, DOCX, TXT, MD, XLSX, XLS, HTML, and HTM files are allowed.'));
     }
   }
 });
@@ -197,7 +197,7 @@ Question: ${question}`;
           } else if (ext === '.ppt' || ext === '.pptx') {
             const officeparser = require('officeparser');
             textContent = await new Promise((resolve, reject) => {
-              officeparser.parseOffice(file.path, (data: string, err: Error) => {
+              officeparser.parseOffice(file.path, (err: Error, data: string) => {
                 if (err) {
                   console.error('Error parsing PowerPoint:', err);
                   resolve(`[Error extracting text from PowerPoint: ${file.originalname}]`);
