@@ -223,10 +223,8 @@ export default function RegisterPage() {
               
               <div className="text-center text-sm">
                 <span className="text-muted-foreground">Already have an account? </span>
-                <Link href="/login">
-                  <a className="text-primary hover:underline font-medium" data-testid="link-login">
-                    Sign in
-                  </a>
+                <Link href="/login" className="text-primary hover:underline font-medium" data-testid="link-login">
+                  Sign in
                 </Link>
               </div>
             </CardFooter>

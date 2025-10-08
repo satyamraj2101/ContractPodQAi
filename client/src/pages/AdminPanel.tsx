@@ -11,6 +11,8 @@ import {
   XCircle,
   Trash2,
   AlertCircle,
+  FileText,
+  Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,6 +56,7 @@ import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
+import { UploadDialog } from "@/components/UploadDialog";
 
 const createUserSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -99,6 +102,8 @@ export default function AdminPanel() {
   const [reviewRequestId, setReviewRequestId] = useState<string | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const [reviewAction, setReviewAction] = useState<"approve" | "reject" | null>(null);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [deleteDocumentId, setDeleteDocumentId] = useState<string | null>(null);
 
   // Fetch all users
   const { data: users = [], isLoading: usersLoading } = useQuery<any[]>({
@@ -118,6 +123,11 @@ export default function AdminPanel() {
   // Fetch feedback
   const { data: feedbacks = [], isLoading: feedbacksLoading } = useQuery<any[]>({
     queryKey: ["/api/admin/feedback"],
+  });
+
+  // Fetch documents
+  const { data: documents = [], isLoading: documentsLoading } = useQuery<any[]>({
+    queryKey: ["/api/documents"],
   });
 
   // Create user mutation
@@ -253,6 +263,33 @@ export default function AdminPanel() {
     }
   };
 
+  // Delete document mutation
+  const deleteDocumentMutation = useMutation({
+    mutationFn: async (documentId: string) => {
+      const res = await apiRequest("DELETE", `/api/documents/${documentId}`, {});
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to delete document");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/documents"] });
+      setDeleteDocumentId(null);
+      toast({
+        title: "Document deleted",
+        description: "Document has been deleted successfully.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -267,7 +304,7 @@ export default function AdminPanel() {
         </div>
 
         <Tabs defaultValue="users" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="users" data-testid="tab-users">
               <Users className="w-4 h-4 mr-2" />
               Users
@@ -283,6 +320,10 @@ export default function AdminPanel() {
             <TabsTrigger value="feedback" data-testid="tab-feedback">
               <MessageSquare className="w-4 h-4 mr-2" />
               Feedback
+            </TabsTrigger>
+            <TabsTrigger value="documents" data-testid="tab-documents">
+              <FileText className="w-4 h-4 mr-2" />
+              Documents
             </TabsTrigger>
           </TabsList>
 
@@ -673,8 +714,106 @@ export default function AdminPanel() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* Documents Tab */}
+          <TabsContent value="documents" className="space-y-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                <div>
+                  <CardTitle>Document Management</CardTitle>
+                  <CardDescription>Upload and manage documents for AI knowledge base</CardDescription>
+                </div>
+                <Button onClick={() => setUploadDialogOpen(true)} data-testid="button-upload-document">
+                  <Upload className="w-4 h-4 mr-2" />
+                  Upload Document
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {documentsLoading ? (
+                  <div className="text-center py-8 text-muted-foreground">Loading documents...</div>
+                ) : documents.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <FileText className="w-16 h-16 mx-auto mb-4 opacity-20" />
+                    <p className="text-lg font-medium mb-2">No documents uploaded</p>
+                    <p className="text-sm">Upload documents to build the AI knowledge base</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Filename</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Size</TableHead>
+                        <TableHead>Upload Date</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {documents.map((doc: any) => (
+                        <TableRow key={doc.id} data-testid={`row-document-${doc.id}`}>
+                          <TableCell className="font-medium" data-testid={`text-filename-${doc.id}`}>
+                            <div className="flex items-center gap-2">
+                              <FileText className="w-4 h-4 text-muted-foreground" />
+                              {doc.originalFilename}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" data-testid={`badge-type-${doc.id}`}>
+                              {doc.fileType.toUpperCase()}
+                            </Badge>
+                          </TableCell>
+                          <TableCell data-testid={`text-size-${doc.id}`}>
+                            {doc.fileSize}
+                          </TableCell>
+                          <TableCell data-testid={`text-upload-date-${doc.id}`}>
+                            {format(new Date(doc.uploadDate), "MMM d, yyyy")}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => setDeleteDocumentId(doc.id)}
+                              data-testid={`button-delete-document-${doc.id}`}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
       </div>
+
+      {/* Upload Dialog */}
+      <UploadDialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen} />
+
+      {/* Delete Document Confirmation Dialog */}
+      <AlertDialog open={!!deleteDocumentId} onOpenChange={(open) => !deleteDocumentMutation.isPending && !open && setDeleteDocumentId(null)}>
+        <AlertDialogContent data-testid="dialog-delete-document">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Document?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the document and all its associated data. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteDocumentMutation.isPending} data-testid="button-cancel-delete-document">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteDocumentId && deleteDocumentMutation.mutate(deleteDocumentId)}
+              disabled={deleteDocumentMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-delete-document"
+            >
+              {deleteDocumentMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete User Confirmation Dialog */}
       <AlertDialog open={!!deleteUserId} onOpenChange={(open) => !deleteUserMutation.isPending && !open && setDeleteUserId(null)}>
