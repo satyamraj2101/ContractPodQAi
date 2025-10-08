@@ -16,7 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, User } from "lucide-react";
+import { LogOut, User, Shield } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -210,12 +210,18 @@ export default function ChatPage() {
                     <p className="text-xs text-primary font-medium mt-1">Admin</p>
                   )}
                 </div>
-                <DropdownMenuItem data-testid="button-profile">
+                <DropdownMenuItem onClick={() => window.location.href = '/profile'} data-testid="button-profile">
                   <User className="w-4 h-4 mr-2" />
                   Profile
                 </DropdownMenuItem>
+                {isAdmin && (
+                  <DropdownMenuItem onClick={() => window.location.href = '/admin'} data-testid="button-admin">
+                    <Shield className="w-4 h-4 mr-2" />
+                    Admin Panel
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => window.location.href = '/api/logout'} data-testid="button-logout">
+                <DropdownMenuItem onClick={() => window.location.href = '/api/auth/logout'} data-testid="button-logout">
                   <LogOut className="w-4 h-4 mr-2" />
                   Logout
                 </DropdownMenuItem>

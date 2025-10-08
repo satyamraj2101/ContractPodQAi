@@ -19,15 +19,26 @@ export default function Landing() {
             </p>
           </div>
 
-          <Button
-            size="lg"
-            className="text-lg px-8 py-6 shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all"
-            onClick={() => window.location.href = '/api/login'}
-            data-testid="button-login"
-          >
-            <Lock className="w-5 h-5 mr-2" />
-            Sign In to Continue
-          </Button>
+          <div className="flex gap-4">
+            <Button
+              size="lg"
+              className="text-lg px-8 py-6 shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all"
+              onClick={() => window.location.href = '/login'}
+              data-testid="button-login"
+            >
+              <Lock className="w-5 h-5 mr-2" />
+              Sign In
+            </Button>
+            <Button
+              size="lg"
+              variant="outline"
+              className="text-lg px-8 py-6"
+              onClick={() => window.location.href = '/register'}
+              data-testid="button-register"
+            >
+              Create Account
+            </Button>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-20 max-w-5xl">
             <Card className="p-8 hover-elevate">
