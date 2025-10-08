@@ -4,6 +4,7 @@ import {
   chatMessages,
   documents,
   documentChunks,
+  documentImages,
   type User,
   type UpsertUser,
   type ChatMessage,
@@ -12,6 +13,8 @@ import {
   type InsertDocument,
   type DocumentChunk,
   type InsertDocumentChunk,
+  type DocumentImage,
+  type InsertDocumentImage,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, lt, desc } from "drizzle-orm";
@@ -37,6 +40,10 @@ export interface IStorage {
   getDocumentChunks(documentId: string): Promise<DocumentChunk[]>;
   insertDocumentChunk(chunk: InsertDocumentChunk): Promise<DocumentChunk>;
   searchDocumentChunks(query: string, queryEmbedding: number[]): Promise<DocumentChunk[]>;
+  
+  // Document image operations
+  getDocumentImages(documentId: string): Promise<DocumentImage[]>;
+  insertDocumentImage(image: InsertDocumentImage): Promise<DocumentImage>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -161,6 +168,22 @@ export class DatabaseStorage implements IStorage {
     }
     
     return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+  }
+
+  // Document image operations
+  async getDocumentImages(documentId: string): Promise<DocumentImage[]> {
+    return await db
+      .select()
+      .from(documentImages)
+      .where(eq(documentImages.documentId, documentId));
+  }
+
+  async insertDocumentImage(image: InsertDocumentImage): Promise<DocumentImage> {
+    const [documentImage] = await db
+      .insert(documentImages)
+      .values(image)
+      .returning();
+    return documentImage;
   }
 }
 

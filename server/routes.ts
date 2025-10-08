@@ -11,10 +11,188 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { insertChatMessageSchema, insertDocumentSchema } from "@shared/schema";
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
+import { load } from 'cheerio';
+import { PDFDocument } from 'pdf-lib';
+import PizZip from 'pizzip';
 
 const require = createRequire(import.meta.url);
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+
+// Helper function to convert URL/file to base64
+async function imageToBase64(imagePath: string, htmlFilePath?: string): Promise<string | null> {
+  try {
+    if (imagePath.startsWith('data:image')) {
+      return imagePath; // Already base64
+    } else if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+      // Download external image using built-in fetch
+      const response = await fetch(imagePath);
+      const buffer = await response.arrayBuffer();
+      const base64 = Buffer.from(buffer).toString('base64');
+      const contentType = response.headers.get('content-type') || 'image/png';
+      return `data:${contentType};base64,${base64}`;
+    } else if (htmlFilePath) {
+      // Handle relative path
+      const htmlDir = path.dirname(htmlFilePath);
+      const absolutePath = path.resolve(htmlDir, imagePath);
+      try {
+        const imageBuffer = await fs.readFile(absolutePath);
+        const ext = path.extname(imagePath).toLowerCase();
+        const mimeType = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : 
+                        ext === '.png' ? 'image/png' : 
+                        ext === '.gif' ? 'image/gif' : 'image/png';
+        return `data:${mimeType};base64,${imageBuffer.toString('base64')}`;
+      } catch (err) {
+        console.error(`Could not read relative image: ${absolutePath}`);
+        return null;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error('Error converting image to base64:', error);
+    return null;
+  }
+}
+
+// Helper function to extract images from HTML files
+async function extractImagesFromHTML(filePath: string, documentId: string): Promise<{ imagePath: string, context: string }[]> {
+  const htmlContent = await fs.readFile(filePath, 'utf-8');
+  const $ = load(htmlContent);
+  const images: { imagePath: string, context: string }[] = [];
+  
+  const imagePromises: Promise<void>[] = [];
+  
+  $('img').each((index, element) => {
+    const src = $(element).attr('src');
+    const alt = $(element).attr('alt') || '';
+    const title = $(element).attr('title') || '';
+    
+    // Get surrounding text context
+    const parent = $(element).parent();
+    const nearbyText = parent.text().replace(/\s+/g, ' ').trim();
+    const context = `Image: ${alt} ${title}. Context: ${nearbyText}`.trim().slice(0, 500);
+    
+    if (src) {
+      // Convert all images to base64 for processing
+      const promise = imageToBase64(src, filePath).then(base64 => {
+        if (base64) {
+          images.push({ imagePath: base64, context });
+        }
+      }).catch(err => {
+        console.error(`Failed to process image ${src}:`, err);
+      });
+      imagePromises.push(promise);
+    }
+  });
+  
+  // Wait for all image conversions to complete
+  await Promise.all(imagePromises);
+  
+  return images;
+}
+
+// Helper function to extract images from PDF files
+async function extractImagesFromPDF(filePath: string, documentId: string): Promise<{ imagePath: string, context: string }[]> {
+  try {
+    const dataBuffer = await fs.readFile(filePath);
+    const pdfDoc = await PDFDocument.load(dataBuffer);
+    const images: { imagePath: string, context: string }[] = [];
+    
+    // PDF image extraction is complex - for now, we'll note that images exist
+    // A full implementation would use pdf.js or similar to extract actual image data
+    const pageCount = pdfDoc.getPageCount();
+    
+    // Placeholder for PDF image extraction
+    // In production, you'd use a library like pdf2pic or pdf.js
+    
+    return images;
+  } catch (error) {
+    console.error('Error extracting images from PDF:', error);
+    return [];
+  }
+}
+
+// Helper function to extract images from DOCX files
+async function extractImagesFromDOCX(filePath: string, documentId: string): Promise<{ imagePath: string, context: string }[]> {
+  try {
+    const dataBuffer = await fs.readFile(filePath);
+    const zip = new PizZip(dataBuffer);
+    const images: { imagePath: string, context: string }[] = [];
+    
+    // Extract images from word/media/ folder
+    const mediaFiles = Object.keys(zip.files).filter(name => name.startsWith('word/media/'));
+    
+    for (const mediaFile of mediaFiles) {
+      const imageData = zip.files[mediaFile].asNodeBuffer();
+      const ext = path.extname(mediaFile).toLowerCase();
+      const mimeType = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' :
+                      ext === '.png' ? 'image/png' :
+                      ext === '.gif' ? 'image/gif' :
+                      ext === '.bmp' ? 'image/bmp' :
+                      ext === '.webp' ? 'image/webp' : 'image/png';
+      const base64Image = `data:${mimeType};base64,${imageData.toString('base64')}`;
+      images.push({ imagePath: base64Image, context: `Image from DOCX document: ${path.basename(mediaFile)}` });
+    }
+    
+    return images;
+  } catch (error) {
+    console.error('Error extracting images from DOCX:', error);
+    return [];
+  }
+}
+
+// Helper function to extract images from PPTX files
+async function extractImagesFromPPTX(filePath: string, documentId: string): Promise<{ imagePath: string, context: string }[]> {
+  try {
+    const dataBuffer = await fs.readFile(filePath);
+    const zip = new PizZip(dataBuffer);
+    const images: { imagePath: string, context: string }[] = [];
+    
+    // Extract images from ppt/media/ folder
+    const mediaFiles = Object.keys(zip.files).filter(name => name.startsWith('ppt/media/'));
+    
+    for (const mediaFile of mediaFiles) {
+      const imageData = zip.files[mediaFile].asNodeBuffer();
+      const ext = path.extname(mediaFile).toLowerCase();
+      const mimeType = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' :
+                      ext === '.png' ? 'image/png' :
+                      ext === '.gif' ? 'image/gif' :
+                      ext === '.bmp' ? 'image/bmp' :
+                      ext === '.webp' ? 'image/webp' : 'image/png';
+      const base64Image = `data:${mimeType};base64,${imageData.toString('base64')}`;
+      images.push({ imagePath: base64Image, context: `Slide image from PowerPoint: ${path.basename(mediaFile)}` });
+    }
+    
+    return images;
+  } catch (error) {
+    console.error('Error extracting images from PPTX:', error);
+    return [];
+  }
+}
+
+// Helper function to describe an image using Gemini Vision API
+async function describeImageWithGemini(imageData: string): Promise<string> {
+  try {
+    const visionModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
+    
+    // Convert base64 image to the format Gemini expects
+    const imageParts = [{
+      inlineData: {
+        data: imageData.split(',')[1], // Remove data:image/...;base64, prefix
+        mimeType: imageData.match(/data:([^;]+)/)?.[1] || 'image/png',
+      },
+    }];
+    
+    const prompt = "Describe this image in detail, focusing on UI elements, interface components, navigation elements, buttons, menus, text, and any other important visual elements. This description will help users understand website navigation and interface layout.";
+    
+    const result = await visionModel.generateContent([prompt, ...imageParts]);
+    const response = await result.response;
+    return response.text();
+  } catch (error) {
+    console.error('Error describing image with Gemini:', error);
+    return 'Unable to generate image description';
+  }
+}
 
 // Configure multer for file uploads
 const upload = multer({
@@ -256,6 +434,81 @@ Question: ${question}`;
               });
             }
           }
+        }
+
+        // Extract and process images from the document
+        try {
+          let extractedImages: { imagePath: string, context: string }[] = [];
+          
+          // Extract images based on file type
+          if (ext === '.html' || ext === '.htm') {
+            extractedImages = await extractImagesFromHTML(file.path, doc.id);
+          } else if (ext === '.pdf') {
+            extractedImages = await extractImagesFromPDF(file.path, doc.id);
+          } else if (ext === '.docx') {
+            extractedImages = await extractImagesFromDOCX(file.path, doc.id);
+          } else if (ext === '.ppt' || ext === '.pptx') {
+            extractedImages = await extractImagesFromPPTX(file.path, doc.id);
+          }
+          
+          // Process each extracted image (all should be base64 at this point)
+          let processedImageCount = 0;
+          for (let imgIndex = 0; imgIndex < extractedImages.length; imgIndex++) {
+            const { imagePath, context } = extractedImages[imgIndex];
+            
+            try {
+              // All images should be base64 after extraction
+              if (!imagePath.startsWith('data:image')) {
+                console.warn(`⚠ Skipping non-base64 image at index ${imgIndex}`);
+                continue;
+              }
+              
+              // Generate AI description using Gemini Vision
+              console.log(`Processing image ${imgIndex + 1}/${extractedImages.length} from ${file.originalname}`);
+              const aiDescription = await describeImageWithGemini(imagePath);
+              
+              // Store image metadata and description
+              await storage.insertDocumentImage({
+                documentId: doc.id,
+                imagePath: imagePath,
+                imageIndex: imgIndex.toString(),
+                aiDescription,
+                imageContext: context,
+                embedding: null,
+              });
+              
+              // Generate embedding for the AI description and add as searchable chunk
+              try {
+                const embeddingModel = genAI.getGenerativeModel({ model: "text-embedding-004" });
+                const descriptionText = `[IMAGE DESCRIPTION]: ${aiDescription}\n[CONTEXT]: ${context}`;
+                const embeddingResult = await embeddingModel.embedContent(descriptionText);
+                const embedding = embeddingResult.embedding.values;
+                
+                // Add image description as a searchable chunk
+                await storage.insertDocumentChunk({
+                  documentId: doc.id,
+                  chunkText: descriptionText,
+                  chunkIndex: `image_${imgIndex}`,
+                  embedding: embedding as any,
+                  pageNumber: null,
+                });
+                
+                processedImageCount++;
+                console.log(`✓ Processed image ${imgIndex + 1} from ${file.originalname}`);
+              } catch (embedError) {
+                console.error(`✗ Error generating embedding for image ${imgIndex}:`, embedError);
+              }
+            } catch (imageError) {
+              console.error(`✗ Error processing image ${imgIndex} from ${file.originalname}:`, imageError);
+            }
+          }
+          
+          if (extractedImages.length > 0) {
+            console.log(`📸 Extracted ${extractedImages.length} images from ${file.originalname} (${processedImageCount} with AI descriptions)`);
+          }
+        } catch (imageExtractionError) {
+          console.error("Error during image extraction:", imageExtractionError);
+          // Continue even if image extraction fails
         }
 
         uploadedDocs.push(doc);

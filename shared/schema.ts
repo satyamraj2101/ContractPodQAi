@@ -106,3 +106,25 @@ export const insertDocumentChunkSchema = createInsertSchema(documentChunks).omit
 
 export type InsertDocumentChunk = z.infer<typeof insertDocumentChunkSchema>;
 export type DocumentChunk = typeof documentChunks.$inferSelect;
+
+// Document images table for storing extracted images and AI descriptions
+export const documentImages = pgTable("document_images", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  documentId: varchar("document_id").notNull().references(() => documents.id, { onDelete: 'cascade' }),
+  imagePath: text("image_path").notNull(), // Using text to support base64 data URLs or file paths
+  imageIndex: varchar("image_index").notNull(),
+  aiDescription: text("ai_description"), // AI-generated description of the image
+  imageContext: text("image_context"), // Surrounding text context where image appears
+  embedding: jsonb("embedding"), // Vector embedding of the AI description
+  extractedAt: timestamp("extracted_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_document_images_document_id").on(table.documentId),
+]);
+
+export const insertDocumentImageSchema = createInsertSchema(documentImages).omit({
+  id: true,
+  extractedAt: true,
+});
+
+export type InsertDocumentImage = z.infer<typeof insertDocumentImageSchema>;
+export type DocumentImage = typeof documentImages.$inferSelect;
