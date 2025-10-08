@@ -8,6 +8,7 @@ import ChatPage from "@/pages/ChatPage";
 import Landing from "@/pages/Landing";
 import LoginPage from "@/pages/LoginPage";
 import RegisterPage from "@/pages/RegisterPage";
+import ForgotPasswordPage from "@/pages/ForgotPasswordPage";
 import ProfilePage from "@/pages/ProfilePage";
 import AdminPanel from "@/pages/AdminPanel";
 import NotFound from "@/pages/not-found";
@@ -31,6 +32,7 @@ function Router() {
           <Route path="/" component={Landing} />
           <Route path="/login" component={LoginPage} />
           <Route path="/register" component={RegisterPage} />
+          <Route path="/forgot-password" component={ForgotPasswordPage} />
         </>
       ) : (
         <>

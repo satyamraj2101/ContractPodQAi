@@ -659,6 +659,46 @@ Question: ${question}`;
   });
 
   // Password reset request routes
+  // Unauthenticated forgot password endpoint for users who can't log in
+  app.post('/api/auth/forgot-password', async (req, res) => {
+    try {
+      const { email, newPassword } = req.body;
+
+      if (!email || typeof email !== 'string') {
+        return res.status(400).json({ message: "Email is required" });
+      }
+
+      if (!newPassword || newPassword.length < 8) {
+        return res.status(400).json({ message: "New password is required and must be at least 8 characters" });
+      }
+
+      // Check if user exists
+      const user = await storage.getUserByEmail(email);
+      
+      // Always hash the password to prevent timing attacks (whether user exists or not)
+      const bcrypt = require("bcryptjs");
+      const newPasswordHash = await bcrypt.hash(newPassword, 10);
+      
+      // Only create request if user exists
+      if (user) {
+        await storage.createPasswordResetRequest({
+          userId: user.id,
+          newPasswordHash,
+          status: 'pending',
+        });
+      }
+
+      // Always return the same message regardless of whether user exists (prevents email enumeration)
+      res.json({ 
+        message: "If an account with that email exists, a password reset request has been submitted for admin review. You will be able to log in with your new password once approved."
+      });
+    } catch (error) {
+      console.error("Error submitting forgot password request:", error);
+      res.status(500).json({ message: "Failed to submit password reset request" });
+    }
+  });
+
+  // Authenticated password change request (for logged-in users)
   app.post('/api/password-reset/request', isAuthenticated, async (req: any, res) => {
     try {
       const userId = (req.user as any).id;
