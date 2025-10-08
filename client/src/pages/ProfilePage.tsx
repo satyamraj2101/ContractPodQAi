@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { User, Lock, Mail, Phone, BadgeCheck, AlertCircle, CheckCircle2 } from "lucide-react";
+import { User, Lock, Mail, Phone, BadgeCheck, AlertCircle, CheckCircle2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -106,6 +106,15 @@ export default function ProfilePage() {
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 p-6">
       <div className="max-w-4xl mx-auto space-y-6">
         <div>
+          <Button
+            variant="ghost"
+            onClick={() => window.location.href = '/'}
+            className="mb-4"
+            data-testid="button-back"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Chat
+          </Button>
           <h1 className="text-3xl font-bold">Profile Settings</h1>
           <p className="text-muted-foreground mt-2">
             Manage your account information and security settings
