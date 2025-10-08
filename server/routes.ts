@@ -2,7 +2,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated, isAdmin } from "./replitAuth";
+import { setupAuth, isAuthenticated, isAdmin } from "./auth";
 import multer from "multer";
 import path from "path";
 import fs from "fs/promises";
@@ -213,22 +213,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
   await setupAuth(app);
 
-  // Auth routes - see blueprint:javascript_log_in_with_replit
-  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
-      res.json(user);
-    } catch (error) {
-      console.error("Error fetching user:", error);
-      res.status(500).json({ message: "Failed to fetch user" });
-    }
-  });
+  // Auth routes are now in auth.ts
 
   // Chat message routes
   app.get('/api/chat/history', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = (req.user as any).id;
       
       // Clean up old messages (older than 7 days)
       await storage.deleteOldChatMessages(7);
@@ -243,15 +233,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/chat/message', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const { question } = req.body;
+      const userId = (req.user as any).id;
+      const { question, conversationId } = req.body;
 
       if (!question || typeof question !== 'string') {
         return res.status(400).json({ message: "Question is required" });
       }
 
+      // Get or create conversation
+      let conversation;
+      if (conversationId) {
+        // Use existing conversation
+        conversation = await storage.getConversation(conversationId);
+        if (!conversation || conversation.userId !== userId) {
+          return res.status(404).json({ message: "Conversation not found" });
+        }
+      } else {
+        // Check if user has reached conversation limit (5 active conversations)
+        const activeCount = await storage.countUserActiveConversations(userId);
+        if (activeCount >= 5) {
+          return res.status(400).json({ 
+            message: "You have reached the maximum of 5 active conversations. Please delete an old conversation to start a new one.",
+            error: "conversation_limit_reached"
+          });
+        }
+
+        // Create new conversation with title from first few words of question
+        const title = question.length > 50 ? question.substring(0, 47) + '...' : question;
+        conversation = await storage.createConversation({
+          userId,
+          title,
+          isActive: true,
+        });
+      }
+
       // Save user message
       const userMessage = await storage.insertChatMessage({
+        conversationId: conversation.id,
         userId,
         role: 'user',
         content: question,
@@ -267,7 +285,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const relevantChunks = await storage.searchDocumentChunks(question, questionEmbedding);
       
       // Build context from relevant chunks
-      const context = relevantChunks.map(chunk => chunk.chunkText).join('\n\n');
+      const context = relevantChunks.map((chunk: any) => chunk.chunkText).join('\n\n');
       
       // Determine if we have relevant context (non-empty and meaningful)
       const hasRelevantContext = context.trim().length > 0 && relevantChunks.length > 0;
@@ -295,7 +313,7 @@ Question: ${question}`;
 
       // Only build sources if we found relevant context
       const sources = hasRelevantContext ? await Promise.all(
-        relevantChunks.map(async (chunk, index) => {
+        relevantChunks.map(async (chunk: any, index: number) => {
           const doc = await storage.getDocument(chunk.documentId);
           return {
             id: `source-${index}`,
@@ -308,15 +326,24 @@ Question: ${question}`;
 
       // Save assistant message
       const assistantMessage = await storage.insertChatMessage({
+        conversationId: conversation.id,
         userId,
         role: 'assistant',
         content: aiResponse,
         sources: sources.length > 0 ? sources : null,
       });
 
+      // Update conversation's updatedAt timestamp
+      await storage.updateConversation(conversation.id, {
+        userId: conversation.userId,
+        title: conversation.title,
+        isActive: conversation.isActive,
+      });
+
       res.json({
         userMessage,
         assistantMessage,
+        conversationId: conversation.id,
       });
     } catch (error: any) {
       console.error("Error processing chat message:", error);
@@ -346,7 +373,7 @@ Question: ${question}`;
 
   app.post('/api/documents/upload', isAuthenticated, isAdmin, upload.array('files', 10), async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = (req.user as any).id;
       const files = req.files as Express.Multer.File[];
 
       if (!files || files.length === 0) {
@@ -580,6 +607,354 @@ Question: ${question}`;
     } catch (error) {
       console.error("Error deleting document:", error);
       res.status(500).json({ message: "Failed to delete document" });
+    }
+  });
+
+  // Conversation routes
+  app.get('/api/conversations', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const conversations = await storage.getUserConversations(userId);
+      res.json(conversations);
+    } catch (error) {
+      console.error("Error fetching conversations:", error);
+      res.status(500).json({ message: "Failed to fetch conversations" });
+    }
+  });
+
+  app.get('/api/conversations/:id/messages', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const { id } = req.params;
+      const conversation = await storage.getConversation(id);
+      
+      if (!conversation || conversation.userId !== userId) {
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+
+      const messages = await storage.getConversationMessages(id);
+      res.json(messages);
+    } catch (error) {
+      console.error("Error fetching conversation messages:", error);
+      res.status(500).json({ message: "Failed to fetch messages" });
+    }
+  });
+
+  app.delete('/api/conversations/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const { id } = req.params;
+      const conversation = await storage.getConversation(id);
+      
+      if (!conversation || conversation.userId !== userId) {
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+
+      await storage.deleteConversation(id);
+      res.json({ message: "Conversation deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting conversation:", error);
+      res.status(500).json({ message: "Failed to delete conversation" });
+    }
+  });
+
+  // Password reset request routes
+  app.post('/api/password-reset/request', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const { newPassword, reason } = req.body;
+
+      if (!newPassword || newPassword.length < 8) {
+        return res.status(400).json({ message: "New password is required and must be at least 8 characters" });
+      }
+
+      // Hash the new password server-side (NEVER accept pre-hashed passwords)
+      const bcrypt = require("bcryptjs");
+      const newPasswordHash = await bcrypt.hash(newPassword, 10);
+
+      // Create password reset request
+      const request = await storage.createPasswordResetRequest({
+        userId,
+        newPasswordHash,
+        status: 'pending',
+      });
+
+      res.json({ 
+        message: "Password change request submitted. An admin will review it shortly.",
+        requestId: request.id
+      });
+    } catch (error) {
+      console.error("Error submitting password reset request:", error);
+      res.status(500).json({ message: "Failed to submit password reset request" });
+    }
+  });
+
+  app.get('/api/admin/password-resets', isAuthenticated, isAdmin, async (_req, res) => {
+    try {
+      const requests = await storage.getPasswordResetRequests();
+      res.json(requests);
+    } catch (error) {
+      console.error("Error fetching password reset requests:", error);
+      res.status(500).json({ message: "Failed to fetch password reset requests" });
+    }
+  });
+
+  app.post('/api/admin/password-resets/:id/approve', isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const adminId = (req.user as any).id;
+      const { id } = req.params;
+      const { note } = req.body;
+
+      const resetRequest = await storage.getPasswordResetRequests();
+      const request = resetRequest.find(r => r.id === id);
+
+      if (!request) {
+        return res.status(404).json({ message: "Password reset request not found" });
+      }
+
+      // Update user's password
+      await storage.updateUser(request.userId, {
+        passwordHash: request.newPasswordHash,
+      });
+
+      // Update request status
+      await storage.updatePasswordResetRequest(id, {
+        status: 'approved',
+        reviewedBy: adminId,
+        reviewedAt: new Date(),
+        reviewNote: note || 'Approved by admin',
+      });
+
+      res.json({ message: "Password reset request approved and password updated" });
+    } catch (error) {
+      console.error("Error approving password reset:", error);
+      res.status(500).json({ message: "Failed to approve password reset" });
+    }
+  });
+
+  app.post('/api/admin/password-resets/:id/reject', isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const adminId = (req.user as any).id;
+      const { id } = req.params;
+      const { note } = req.body;
+
+      // Update request status
+      await storage.updatePasswordResetRequest(id, {
+        status: 'rejected',
+        reviewedBy: adminId,
+        reviewedAt: new Date(),
+        reviewNote: note || 'Rejected by admin',
+      });
+
+      res.json({ message: "Password reset request rejected" });
+    } catch (error) {
+      console.error("Error rejecting password reset:", error);
+      res.status(500).json({ message: "Failed to reject password reset" });
+    }
+  });
+
+  // User management routes (admin only)
+  app.get('/api/admin/users', isAuthenticated, isAdmin, async (_req, res) => {
+    try {
+      const users = await storage.getAllUsers();
+      // Don't send password hashes
+      const safeUsers = users.map(u => ({
+        ...u,
+        passwordHash: undefined,
+      }));
+      res.json(safeUsers);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
+  app.post('/api/admin/users', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { email, password, firstName, lastName, isAdmin, employeeId, mobile } = req.body;
+
+      if (!email || !password) {
+        return res.status(400).json({ message: "Email and password are required" });
+      }
+
+      // Check if user already exists
+      const existing = await storage.getUserByEmail(email);
+      if (existing) {
+        return res.status(400).json({ message: "User with this email already exists" });
+      }
+
+      const bcrypt = require("bcryptjs");
+      const passwordHash = await bcrypt.hash(password, 10);
+
+      const user = await storage.createUser({
+        email,
+        passwordHash,
+        firstName,
+        lastName,
+        isAdmin: isAdmin || false,
+        isActive: true,
+        employeeId,
+        mobile,
+      });
+
+      res.json({ 
+        message: "User created successfully",
+        user: { ...user, passwordHash: undefined }
+      });
+    } catch (error) {
+      console.error("Error creating user:", error);
+      res.status(500).json({ message: "Failed to create user" });
+    }
+  });
+
+  app.patch('/api/admin/users/:id', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { email, firstName, lastName, isAdmin, isActive, employeeId, mobile } = req.body;
+
+      const user = await storage.updateUser(id, {
+        email,
+        firstName,
+        lastName,
+        isAdmin,
+        isActive,
+        employeeId,
+        mobile,
+      });
+
+      res.json({
+        message: "User updated successfully",
+        user: { ...user, passwordHash: undefined }
+      });
+    } catch (error) {
+      console.error("Error updating user:", error);
+      res.status(500).json({ message: "Failed to update user" });
+    }
+  });
+
+  app.post('/api/admin/users/:id/change-password', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { newPassword } = req.body;
+
+      if (!newPassword) {
+        return res.status(400).json({ message: "New password is required" });
+      }
+
+      const bcrypt = require("bcryptjs");
+      const passwordHash = await bcrypt.hash(newPassword, 10);
+
+      await storage.updateUser(id, {
+        passwordHash,
+      });
+
+      res.json({ message: "Password changed successfully" });
+    } catch (error) {
+      console.error("Error changing password:", error);
+      res.status(500).json({ message: "Failed to change password" });
+    }
+  });
+
+  app.get('/api/admin/users/:id/activity', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const stats = await storage.getUserActivityStats(id, 30);
+      const logins = await storage.getUserLoginHistory(id, 10);
+      res.json({ stats, recentLogins: logins });
+    } catch (error) {
+      console.error("Error fetching user activity:", error);
+      res.status(500).json({ message: "Failed to fetch user activity" });
+    }
+  });
+
+  // Feedback routes
+  app.post('/api/feedback', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const { conversationId, messageId, feedbackType, feedbackText, rating } = req.body;
+
+      if (!feedbackType) {
+        return res.status(400).json({ message: "Feedback type is required" });
+      }
+
+      const feedback = await storage.createFeedback({
+        userId,
+        conversationId,
+        messageId,
+        feedbackType,
+        feedbackText,
+        rating,
+      });
+
+      res.json({ message: "Feedback submitted successfully", feedback });
+    } catch (error) {
+      console.error("Error submitting feedback:", error);
+      res.status(500).json({ message: "Failed to submit feedback" });
+    }
+  });
+
+  app.get('/api/admin/feedback', isAuthenticated, isAdmin, async (_req, res) => {
+    try {
+      const feedbacks = await storage.getAllFeedbacks();
+      res.json(feedbacks);
+    } catch (error) {
+      console.error("Error fetching feedbacks:", error);
+      res.status(500).json({ message: "Failed to fetch feedbacks" });
+    }
+  });
+
+  // User profile routes
+  app.patch('/api/profile', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const { firstName, lastName, employeeId, mobile } = req.body;
+
+      const user = await storage.updateUser(userId, {
+        firstName,
+        lastName,
+        employeeId,
+        mobile,
+      });
+
+      res.json({
+        message: "Profile updated successfully",
+        user: { ...user, passwordHash: undefined }
+      });
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      res.status(500).json({ message: "Failed to update profile" });
+    }
+  });
+
+  app.post('/api/profile/change-password', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const { currentPassword, newPassword } = req.body;
+
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ message: "Current and new passwords are required" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user || !user.passwordHash) {
+        return res.status(400).json({ message: "User not found or password not set" });
+      }
+
+      const bcrypt = require("bcryptjs");
+      const isValidPassword = await bcrypt.compare(currentPassword, user.passwordHash);
+      if (!isValidPassword) {
+        return res.status(400).json({ message: "Current password is incorrect" });
+      }
+
+      const newPasswordHash = await bcrypt.hash(newPassword, 10);
+      await storage.updateUser(userId, {
+        passwordHash: newPasswordHash,
+      });
+
+      res.json({ message: "Password changed successfully" });
+    } catch (error) {
+      console.error("Error changing password:", error);
+      res.status(500).json({ message: "Failed to change password" });
     }
   });
 

@@ -1,11 +1,16 @@
-// Storage interface and implementation - see blueprint:javascript_log_in_with_replit
+// Storage interface and implementation
 import {
   users,
   chatMessages,
   documents,
   documentChunks,
   documentImages,
+  passwordResetRequests,
+  loginHistory,
+  feedbacks,
+  conversations,
   type User,
+  type InsertUser,
   type UpsertUser,
   type ChatMessage,
   type InsertChatMessage,
@@ -15,20 +20,58 @@ import {
   type InsertDocumentChunk,
   type DocumentImage,
   type InsertDocumentImage,
+  type PasswordResetRequest,
+  type InsertPasswordResetRequest,
+  type LoginHistory,
+  type InsertLoginHistory,
+  type Feedback,
+  type InsertFeedback,
+  type Conversation,
+  type InsertConversation,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, lt, desc } from "drizzle-orm";
+import { eq, and, lt, desc, sql as drizzleSql, gte } from "drizzle-orm";
 
 // Interface for storage operations
 export interface IStorage {
-  // User operations (required for Replit Auth)
+  // User operations
   getUser(id: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  createUser(user: InsertUser): Promise<User>;
+  updateUser(id: string, updates: Partial<InsertUser>): Promise<User>;
   upsertUser(user: UpsertUser): Promise<User>;
+  getAllUsers(): Promise<User[]>;
+  
+  // Password reset operations
+  createPasswordResetRequest(request: InsertPasswordResetRequest): Promise<PasswordResetRequest>;
+  getPasswordResetRequests(status?: string): Promise<PasswordResetRequest[]>;
+  getUserPasswordResetRequests(userId: string): Promise<PasswordResetRequest[]>;
+  updatePasswordResetRequest(id: string, updates: Partial<InsertPasswordResetRequest>): Promise<PasswordResetRequest>;
+  
+  // Login history operations
+  recordLogin(loginData: InsertLoginHistory): Promise<LoginHistory>;
+  getUserLoginHistory(userId: string, limit?: number): Promise<LoginHistory[]>;
+  getUserActivityStats(userId: string, days?: number): Promise<{ loginCount: number; messageCount: number }>;
+  
+  // Feedback operations
+  createFeedback(feedback: InsertFeedback): Promise<Feedback>;
+  getAllFeedbacks(): Promise<Feedback[]>;
+  getUserFeedbacks(userId: string): Promise<Feedback[]>;
+  
+  // Conversation operations
+  createConversation(conversation: InsertConversation): Promise<Conversation>;
+  getUserConversations(userId: string): Promise<Conversation[]>;
+  getConversation(id: string): Promise<Conversation | undefined>;
+  updateConversation(id: string, updates: Partial<InsertConversation>): Promise<Conversation>;
+  deleteConversation(id: string): Promise<void>;
+  countUserActiveConversations(userId: string): Promise<number>;
   
   // Chat message operations
+  getConversationMessages(conversationId: string): Promise<ChatMessage[]>;
   getChatMessages(userId: string, limit?: number): Promise<ChatMessage[]>;
   insertChatMessage(message: InsertChatMessage): Promise<ChatMessage>;
   deleteOldChatMessages(daysOld: number): Promise<void>;
+  countUserMessagesInPeriod(userId: string, days: number): Promise<number>;
   
   // Document operations
   getDocuments(): Promise<Document[]>;
@@ -53,6 +96,25 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+
+  async createUser(user: InsertUser): Promise<User> {
+    const [newUser] = await db.insert(users).values(user).returning();
+    return newUser;
+  }
+
+  async updateUser(id: string, updates: Partial<InsertUser>): Promise<User> {
+    const [updatedUser] = await db
+      .update(users)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    return updatedUser;
+  }
+
   async upsertUser(userData: UpsertUser): Promise<User> {
     const [user] = await db
       .insert(users)
@@ -68,7 +130,178 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
+  // Password reset operations
+  async createPasswordResetRequest(request: InsertPasswordResetRequest): Promise<PasswordResetRequest> {
+    const [resetRequest] = await db
+      .insert(passwordResetRequests)
+      .values(request)
+      .returning();
+    return resetRequest;
+  }
+
+  async getPasswordResetRequests(status?: string): Promise<PasswordResetRequest[]> {
+    if (status) {
+      return await db
+        .select()
+        .from(passwordResetRequests)
+        .where(eq(passwordResetRequests.status, status))
+        .orderBy(desc(passwordResetRequests.requestedAt));
+    }
+    return await db
+      .select()
+      .from(passwordResetRequests)
+      .orderBy(desc(passwordResetRequests.requestedAt));
+  }
+
+  async getUserPasswordResetRequests(userId: string): Promise<PasswordResetRequest[]> {
+    return await db
+      .select()
+      .from(passwordResetRequests)
+      .where(eq(passwordResetRequests.userId, userId))
+      .orderBy(desc(passwordResetRequests.requestedAt));
+  }
+
+  async updatePasswordResetRequest(id: string, updates: Partial<InsertPasswordResetRequest>): Promise<PasswordResetRequest> {
+    const [updated] = await db
+      .update(passwordResetRequests)
+      .set(updates)
+      .where(eq(passwordResetRequests.id, id))
+      .returning();
+    return updated;
+  }
+
+  // Login history operations
+  async recordLogin(loginData: InsertLoginHistory): Promise<LoginHistory> {
+    const [login] = await db
+      .insert(loginHistory)
+      .values(loginData)
+      .returning();
+    return login;
+  }
+
+  async getUserLoginHistory(userId: string, limit: number = 50): Promise<LoginHistory[]> {
+    return await db
+      .select()
+      .from(loginHistory)
+      .where(eq(loginHistory.userId, userId))
+      .orderBy(desc(loginHistory.loginAt))
+      .limit(limit);
+  }
+
+  async getUserActivityStats(userId: string, days: number = 30): Promise<{ loginCount: number; messageCount: number }> {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+
+    // Count logins in the last N days
+    const logins = await db
+      .select({ count: drizzleSql<number>`count(*)` })
+      .from(loginHistory)
+      .where(and(
+        eq(loginHistory.userId, userId),
+        gte(loginHistory.loginAt, cutoffDate)
+      ));
+
+    // Count messages in the last N days
+    const messages = await db
+      .select({ count: drizzleSql<number>`count(*)` })
+      .from(chatMessages)
+      .where(and(
+        eq(chatMessages.userId, userId),
+        gte(chatMessages.timestamp, cutoffDate)
+      ));
+
+    return {
+      loginCount: Number(logins[0]?.count || 0),
+      messageCount: Number(messages[0]?.count || 0),
+    };
+  }
+
+  // Feedback operations
+  async createFeedback(feedback: InsertFeedback): Promise<Feedback> {
+    const [newFeedback] = await db
+      .insert(feedbacks)
+      .values(feedback)
+      .returning();
+    return newFeedback;
+  }
+
+  async getAllFeedbacks(): Promise<Feedback[]> {
+    return await db
+      .select()
+      .from(feedbacks)
+      .orderBy(desc(feedbacks.submittedAt));
+  }
+
+  async getUserFeedbacks(userId: string): Promise<Feedback[]> {
+    return await db
+      .select()
+      .from(feedbacks)
+      .where(eq(feedbacks.userId, userId))
+      .orderBy(desc(feedbacks.submittedAt));
+  }
+
+  // Conversation operations
+  async createConversation(conversation: InsertConversation): Promise<Conversation> {
+    const [newConversation] = await db
+      .insert(conversations)
+      .values(conversation)
+      .returning();
+    return newConversation;
+  }
+
+  async getUserConversations(userId: string): Promise<Conversation[]> {
+    return await db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.userId, userId))
+      .orderBy(desc(conversations.updatedAt));
+  }
+
+  async getConversation(id: string): Promise<Conversation | undefined> {
+    const [conversation] = await db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, id));
+    return conversation;
+  }
+
+  async updateConversation(id: string, updates: Partial<InsertConversation>): Promise<Conversation> {
+    const [updated] = await db
+      .update(conversations)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(conversations.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteConversation(id: string): Promise<void> {
+    await db.delete(conversations).where(eq(conversations.id, id));
+  }
+
+  async countUserActiveConversations(userId: string): Promise<number> {
+    const result = await db
+      .select({ count: drizzleSql<number>`count(*)` })
+      .from(conversations)
+      .where(and(
+        eq(conversations.userId, userId),
+        eq(conversations.isActive, true)
+      ));
+    return Number(result[0]?.count || 0);
+  }
+
   // Chat message operations
+  async getConversationMessages(conversationId: string): Promise<ChatMessage[]> {
+    return await db
+      .select()
+      .from(chatMessages)
+      .where(eq(chatMessages.conversationId, conversationId))
+      .orderBy(chatMessages.timestamp);
+  }
+
   async getChatMessages(userId: string, limit: number = 50): Promise<ChatMessage[]> {
     const messages = await db
       .select()
@@ -95,6 +328,21 @@ export class DatabaseStorage implements IStorage {
     await db
       .delete(chatMessages)
       .where(lt(chatMessages.timestamp, cutoffDate));
+  }
+
+  async countUserMessagesInPeriod(userId: string, days: number): Promise<number> {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+
+    const result = await db
+      .select({ count: drizzleSql<number>`count(*)` })
+      .from(chatMessages)
+      .where(and(
+        eq(chatMessages.userId, userId),
+        gte(chatMessages.timestamp, cutoffDate)
+      ));
+    
+    return Number(result[0]?.count || 0);
   }
 
   // Document operations
@@ -172,7 +420,10 @@ export class DatabaseStorage implements IStorage {
       normB += b[i] * b[i];
     }
     
-    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+    const denominator = Math.sqrt(normA) * Math.sqrt(normB);
+    if (denominator === 0) return 0;
+    
+    return dotProduct / denominator;
   }
 
   // Document image operations
@@ -192,5 +443,5 @@ export class DatabaseStorage implements IStorage {
   }
 }
 
-// Use MemStorage for now, will switch to DatabaseStorage after migration
+// Export a singleton instance
 export const storage = new DatabaseStorage();
