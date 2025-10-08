@@ -1,6 +1,10 @@
-import { FileText, ExternalLink, User, Bot } from "lucide-react";
+import { FileText, ExternalLink, User, Bot, ThumbsUp, ThumbsDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
+import { useState } from "react";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface SourceCitation {
   id: string;
@@ -14,10 +18,47 @@ interface ChatMessageProps {
   content: string;
   sources?: SourceCitation[];
   timestamp: string;
+  id?: string;
 }
 
-export function ChatMessage({ role, content, sources, timestamp }: ChatMessageProps) {
+export function ChatMessage({ role, content, sources, timestamp, id }: ChatMessageProps) {
   const isUser = role === "user";
+  const { toast } = useToast();
+  const [feedback, setFeedback] = useState<"helpful" | "not_helpful" | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Deduplicate sources by filename and page
+  const uniqueSources = sources ? sources.filter((source, index, self) =>
+    index === self.findIndex((s) => 
+      s.filename === source.filename && s.page === source.page
+    )
+  ) : [];
+
+  const handleFeedback = async (isHelpful: boolean) => {
+    if (!id || isSubmitting) return;
+    
+    setIsSubmitting(true);
+    try {
+      await apiRequest("POST", "/api/feedback", {
+        messageId: id,
+        isHelpful,
+      });
+      
+      setFeedback(isHelpful ? "helpful" : "not_helpful");
+      toast({
+        title: "Thanks for your feedback!",
+        description: "Your feedback helps us improve.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to submit feedback. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div className={`flex gap-5 ${isUser ? "justify-end" : "justify-start"} mb-8 animate-in fade-in slide-in-from-bottom-4 duration-300`}>
@@ -48,9 +89,9 @@ export function ChatMessage({ role, content, sources, timestamp }: ChatMessagePr
           )}
         </div>
 
-        {sources && sources.length > 0 && (
+        {uniqueSources && uniqueSources.length > 0 && (
           <div className="flex flex-wrap gap-2.5 mt-4">
-            {sources.map((source) => (
+            {uniqueSources.map((source) => (
               <Badge
                 key={source.id}
                 variant="outline"
@@ -64,6 +105,35 @@ export function ChatMessage({ role, content, sources, timestamp }: ChatMessagePr
                 <ExternalLink className="w-3 h-3 ml-2" />
               </Badge>
             ))}
+          </div>
+        )}
+
+        {/* Feedback buttons for assistant messages */}
+        {!isUser && id && (
+          <div className="flex items-center gap-2 mt-3">
+            <span className="text-xs text-muted-foreground">Was this helpful?</span>
+            <div className="flex gap-1">
+              <Button
+                variant={feedback === "helpful" ? "default" : "ghost"}
+                size="sm"
+                className="h-8 px-2"
+                onClick={() => handleFeedback(true)}
+                disabled={isSubmitting || feedback !== null}
+                data-testid="button-feedback-helpful"
+              >
+                <ThumbsUp className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                variant={feedback === "not_helpful" ? "default" : "ghost"}
+                size="sm"
+                className="h-8 px-2"
+                onClick={() => handleFeedback(false)}
+                disabled={isSubmitting || feedback !== null}
+                data-testid="button-feedback-not-helpful"
+              >
+                <ThumbsDown className="w-3.5 h-3.5" />
+              </Button>
+            </div>
           </div>
         )}
       </div>
