@@ -49,6 +49,7 @@ export default function ChatPage() {
   const { toast } = useToast();
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
+  const [hasManuallySelectedNew, setHasManuallySelectedNew] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
     const saved = localStorage.getItem('chatSidebarOpen');
     return saved !== null ? saved === 'true' : true;
@@ -125,6 +126,7 @@ export default function ChatPage() {
       // If this was a new conversation (no selectedConversationId), set it
       if (!selectedConversationId && data.conversationId) {
         setSelectedConversationId(data.conversationId);
+        setHasManuallySelectedNew(false);
       }
       
       // Invalidate queries to refresh conversations list and messages
@@ -183,20 +185,26 @@ export default function ChatPage() {
     }
   }, [conversationMessages]);
 
-  // Auto-select first conversation on load
+  // Auto-select first conversation on load (but not if user manually clicked "New")
   useEffect(() => {
-    if (conversations.length > 0 && !selectedConversationId) {
+    if (conversations.length > 0 && !selectedConversationId && !hasManuallySelectedNew) {
       setSelectedConversationId(conversations[0].id);
     }
-  }, [conversations, selectedConversationId]);
+  }, [conversations, selectedConversationId, hasManuallySelectedNew]);
 
   const handleSendMessage = (content: string) => {
     sendMessageMutation.mutate(content);
   };
 
+  const handleSelectConversation = (id: string) => {
+    setSelectedConversationId(id);
+    setHasManuallySelectedNew(false);
+  };
+
   const handleNewConversation = () => {
     setSelectedConversationId(null);
     setMessages([]);
+    setHasManuallySelectedNew(true);
   };
 
   const handleDeleteConversation = async (id: string) => {
@@ -206,6 +214,7 @@ export default function ChatPage() {
       if (selectedConversationId === id) {
         setSelectedConversationId(null);
         setMessages([]);
+        setHasManuallySelectedNew(true);
       }
       toast({
         title: "Conversation deleted",
@@ -238,7 +247,7 @@ export default function ChatPage() {
             messageCount: conv.messageCount || 0,
           }))}
           selectedConversationId={selectedConversationId}
-          onSelectConversation={setSelectedConversationId}
+          onSelectConversation={handleSelectConversation}
           onNewConversation={handleNewConversation}
           onDeleteConversation={handleDeleteConversation}
         />
