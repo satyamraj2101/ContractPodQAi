@@ -6,10 +6,13 @@ import { setupAuth, isAuthenticated, isAdmin } from "./replitAuth";
 import multer from "multer";
 import path from "path";
 import fs from "fs/promises";
+import { createRequire } from 'module';
 import OpenAI from "openai";
 import { insertChatMessageSchema, insertDocumentSchema } from "@shared/schema";
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
+
+const require = createRequire(import.meta.url);
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -136,8 +139,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userMessage,
         assistantMessage,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error processing chat message:", error);
+      
+      // Handle OpenAI quota errors specifically
+      if (error?.status === 429 || error?.code === 'insufficient_quota') {
+        return res.status(429).json({ 
+          message: "OpenAI API quota exceeded. Please check your API key credits.",
+          error: "quota_exceeded"
+        });
+      }
+      
       res.status(500).json({ message: "Failed to process message" });
     }
   });

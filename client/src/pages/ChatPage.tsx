@@ -95,7 +95,7 @@ export default function ChatPage() {
       setMessages(prev => [...prev, userMsg, aiMsg]);
       queryClient.invalidateQueries({ queryKey: ["/api/chat/history"] });
     },
-    onError: (error: Error) => {
+    onError: async (error: Error) => {
       if (isUnauthorizedError(error)) {
         toast({
           title: "Unauthorized",
@@ -107,6 +107,19 @@ export default function ChatPage() {
         }, 500);
         return;
       }
+      
+      // Check if it's an OpenAI quota error
+      const errorMessage = error.message || "";
+      if (errorMessage.includes("quota") || errorMessage.includes("429")) {
+        toast({
+          title: "OpenAI API Quota Exceeded",
+          description: "Your OpenAI API key has run out of credits. Please add credits to your OpenAI account.",
+          variant: "destructive",
+          duration: 6000,
+        });
+        return;
+      }
+      
       toast({
         title: "Error",
         description: "Failed to send message. Please try again.",

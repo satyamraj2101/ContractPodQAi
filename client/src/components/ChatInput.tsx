@@ -27,7 +27,7 @@ export function ChatInput({ onSendMessage, disabled = false }: ChatInputProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="border-t border-border bg-background p-6">
+    <form onSubmit={handleSubmit} className="border-t border-border bg-background p-6 transition-all duration-200">
       <div className="flex gap-3 max-w-5xl mx-auto">
         <div className="flex-1 relative">
           <Textarea
@@ -35,7 +35,7 @@ export function ChatInput({ onSendMessage, disabled = false }: ChatInputProps) {
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask a question about ContractPodAI documentation..."
-            className="resize-none min-h-14 max-h-32 pr-14 shadow-sm"
+            className="resize-none min-h-14 max-h-32 pr-14 shadow-sm transition-all duration-200 focus:shadow-md"
             disabled={disabled}
             data-testid="input-chat-message"
           />
@@ -43,7 +43,7 @@ export function ChatInput({ onSendMessage, disabled = false }: ChatInputProps) {
             type="button"
             size="icon"
             variant="ghost"
-            className="absolute right-2 bottom-2"
+            className="absolute right-2 bottom-2 opacity-0 pointer-events-none"
             data-testid="button-attach"
           >
             <Paperclip className="w-4 h-4" />
@@ -53,7 +53,7 @@ export function ChatInput({ onSendMessage, disabled = false }: ChatInputProps) {
           type="submit"
           size="lg"
           disabled={!message.trim() || disabled}
-          className="h-14 px-6 shadow-lg shadow-primary/20"
+          className="h-14 px-6 shadow-lg shadow-primary/20 transition-all duration-200 hover:scale-105 active:scale-95"
           data-testid="button-send-message"
         >
           <Send className="w-5 h-5" />

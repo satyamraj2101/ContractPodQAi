@@ -20,7 +20,7 @@ export function ChatMessage({ role, content, sources, timestamp }: ChatMessagePr
   const isUser = role === "user";
 
   return (
-    <div className={`flex gap-5 ${isUser ? "justify-end" : "justify-start"} mb-8`}>
+    <div className={`flex gap-5 ${isUser ? "justify-end" : "justify-start"} mb-8 animate-in fade-in slide-in-from-bottom-4 duration-300`}>
       {!isUser && (
         <div className="flex-shrink-0">
           <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-md shadow-primary/20">
@@ -33,10 +33,10 @@ export function ChatMessage({ role, content, sources, timestamp }: ChatMessagePr
         <div className="text-xs font-medium text-muted-foreground mb-2.5 px-1">{timestamp}</div>
         
         <div
-          className={`rounded-2xl px-5 py-4 ${
+          className={`rounded-2xl px-5 py-4 transition-all duration-200 ${
             isUser
-              ? "bg-gradient-to-br from-primary/15 to-primary/10 text-foreground shadow-sm"
-              : "bg-card border border-card-border shadow-md"
+              ? "bg-gradient-to-br from-primary/15 to-primary/10 text-foreground shadow-sm hover:shadow-md"
+              : "bg-card border border-card-border shadow-md hover:shadow-lg"
           }`}
         >
           {isUser ? (
@@ -54,7 +54,7 @@ export function ChatMessage({ role, content, sources, timestamp }: ChatMessagePr
               <Badge
                 key={source.id}
                 variant="outline"
-                className="cursor-pointer hover-elevate active-elevate-2 shadow-sm px-3 py-1.5"
+                className="cursor-pointer hover-elevate active-elevate-2 shadow-sm px-3 py-1.5 transition-all duration-200 hover:scale-105"
                 onClick={() => window.open(source.url, '_blank')}
                 data-testid={`citation-${source.id}`}
               >

@@ -29,7 +29,7 @@ export function DocumentCard({
   onDownload,
 }: DocumentCardProps) {
   return (
-    <Card className="p-4 hover-elevate active-elevate-2 cursor-pointer shadow-sm" data-testid={`card-document-${id}`}>
+    <Card className="p-4 hover-elevate active-elevate-2 cursor-pointer shadow-sm transition-all duration-200 animate-in fade-in slide-in-from-left-4" data-testid={`card-document-${id}`}>
       <div className="flex items-start gap-3.5">
         <div className="flex-shrink-0">
           <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 flex items-center justify-center shadow-sm">
