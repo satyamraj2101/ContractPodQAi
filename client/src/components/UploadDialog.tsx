@@ -114,7 +114,7 @@ export function UploadDialog({ open, onOpenChange }: UploadDialogProps) {
         <DialogHeader>
           <DialogTitle>Upload Documentation</DialogTitle>
           <DialogDescription>
-            Upload PDF, DOCX, TXT, or MD files to add to the knowledge base
+            Upload PDF, PPT, TXT, MD, XLSX, or HTML files to add to the knowledge base
           </DialogDescription>
         </DialogHeader>
 
@@ -130,7 +130,7 @@ export function UploadDialog({ open, onOpenChange }: UploadDialogProps) {
           <input
             type="file"
             multiple
-            accept=".pdf,.docx,.txt,.md"
+            accept=".pdf,.ppt,.pptx,.txt,.md,.xlsx,.xls,.html,.htm"
             onChange={handleFileChange}
             className="hidden"
             id="file-upload"

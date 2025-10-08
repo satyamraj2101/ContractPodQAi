@@ -8,6 +8,8 @@ import path from "path";
 import fs from "fs/promises";
 import OpenAI from "openai";
 import { insertChatMessageSchema, insertDocumentSchema } from "@shared/schema";
+import * as XLSX from 'xlsx';
+import mammoth from 'mammoth';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -18,12 +20,12 @@ const upload = multer({
   dest: "uploads/",
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter: (_req, file, cb) => {
-    const allowedTypes = ['.pdf', '.txt', '.md', '.docx'];
+    const allowedTypes = ['.pdf', '.ppt', '.pptx', '.txt', '.md', '.xlsx', '.xls', '.html', '.htm'];
     const ext = path.extname(file.originalname).toLowerCase();
     if (allowedTypes.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type. Only PDF, TXT, MD, and DOCX files are allowed.'));
+      cb(new Error('Invalid file type. Only PDF, PPT, TXT, MD, XLSX, and HTML files are allowed.'));
     }
   }
 });
@@ -164,16 +166,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       for (const file of files) {
         let textContent = '';
+        const ext = path.extname(file.originalname).toLowerCase();
 
-        // Extract text based on file type
-        if (file.originalname.endsWith('.pdf')) {
-          const dataBuffer = await fs.readFile(file.path);
-          // Dynamic import for pdf-parse (CommonJS module)
-          const pdfParse = (await import('pdf-parse')).default;
-          const pdfData = await pdfParse(dataBuffer);
-          textContent = pdfData.text;
-        } else if (file.originalname.endsWith('.txt') || file.originalname.endsWith('.md')) {
-          textContent = await fs.readFile(file.path, 'utf-8');
+        try {
+          // Extract text based on file type
+          if (ext === '.pdf') {
+            const dataBuffer = await fs.readFile(file.path);
+            const pdfParse = require('pdf-parse');
+            const pdfData = await pdfParse(dataBuffer);
+            textContent = pdfData.text;
+          } else if (ext === '.txt' || ext === '.md') {
+            textContent = await fs.readFile(file.path, 'utf-8');
+          } else if (ext === '.xlsx' || ext === '.xls') {
+            const dataBuffer = await fs.readFile(file.path);
+            const workbook = XLSX.read(dataBuffer, { type: 'buffer' });
+            const sheets = workbook.SheetNames.map(name => {
+              const sheet = workbook.Sheets[name];
+              return XLSX.utils.sheet_to_txt(sheet);
+            });
+            textContent = sheets.join('\n\n');
+          } else if (ext === '.html' || ext === '.htm') {
+            const htmlContent = await fs.readFile(file.path, 'utf-8');
+            // Basic HTML tag stripping (for better parsing, consider using a library like cheerio)
+            textContent = htmlContent.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+          } else if (ext === '.docx') {
+            const dataBuffer = await fs.readFile(file.path);
+            const result = await mammoth.extractRawText({ buffer: dataBuffer });
+            textContent = result.value;
+          } else if (ext === '.ppt' || ext === '.pptx') {
+            // PPT/PPTX parsing is complex - for now, skip or show message
+            textContent = `[PowerPoint file - text extraction not yet supported. Filename: ${file.originalname}]`;
+          }
+        } catch (parseError) {
+          console.error(`Error parsing file ${file.originalname}:`, parseError);
+          textContent = `[Error parsing file: ${file.originalname}]`;
         }
 
         // Save document metadata
