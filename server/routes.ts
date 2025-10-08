@@ -19,6 +19,77 @@ const require = createRequire(import.meta.url);
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
+// Helper function to normalize and clean extracted text
+function normalizeText(text: string): string {
+  if (!text) return '';
+  
+  // Fix common PDF parsing issue: "H O W T O" -> "HOWTO" or "D O C" -> "DOC"
+  // Match 3 or more single word characters separated by single spaces
+  // Pattern: matches "X Y Z" or "A B C D E F" but not "a normal sentence"
+  let normalizedText = text.replace(/(\b\w\s){2,}\w\b/g, (match) => {
+    // Only apply fix if this looks like the spacing artifact (3+ letters total)
+    // Count letters in the match
+    const letters = match.replace(/\s/g, '');
+    if (letters.length >= 3) {
+      // Remove all spaces from this matched sequence
+      return letters;
+    }
+    return match;
+  });
+  
+  return normalizedText
+    // Normalize whitespace (multiple spaces/newlines to single space)
+    .replace(/\s+/g, ' ')
+    // Remove control characters
+    .replace(/[\x00-\x1F\x7F]/g, '')
+    .trim();
+}
+
+// Helper function to chunk text intelligently
+function chunkText(text: string, chunkSize: number = 1000): string[] {
+  if (!text || text.length === 0) return [];
+  
+  const chunks: string[] = [];
+  const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+  
+  let currentChunk = '';
+  
+  for (const sentence of sentences) {
+    if ((currentChunk + sentence).length > chunkSize) {
+      if (currentChunk) {
+        chunks.push(currentChunk.trim());
+        currentChunk = sentence;
+      } else {
+        // Sentence is longer than chunk size, split it
+        const words = sentence.split(' ');
+        let wordChunk = '';
+        for (const word of words) {
+          if ((wordChunk + ' ' + word).length > chunkSize) {
+            if (wordChunk) {
+              chunks.push(wordChunk.trim());
+            }
+            wordChunk = word;
+          } else {
+            wordChunk += (wordChunk ? ' ' : '') + word;
+          }
+        }
+        if (wordChunk) {
+          currentChunk = wordChunk;
+        }
+      }
+    } else {
+      currentChunk += (currentChunk ? ' ' : '') + sentence;
+    }
+  }
+  
+  if (currentChunk) {
+    chunks.push(currentChunk.trim());
+  }
+  
+  // Filter out very short chunks (likely parsing artifacts)
+  return chunks.filter(chunk => chunk.length > 10);
+}
+
 // Helper function to convert URL/file to base64
 async function imageToBase64(imagePath: string, htmlFilePath?: string): Promise<string | null> {
   try {
@@ -426,7 +497,22 @@ Question: ${question}`;
           }
         } catch (parseError) {
           console.error(`Error parsing file ${file.originalname}:`, parseError);
-          textContent = `[Error parsing file: ${file.originalname}]`;
+          textContent = '';
+        }
+
+        // Normalize the extracted text
+        const normalizedText = normalizeText(textContent);
+        
+        // Skip documents with no meaningful content
+        if (!normalizedText || normalizedText.length < 10) {
+          console.warn(`Skipping ${file.originalname}: No meaningful text content extracted`);
+          // Delete the uploaded file
+          try {
+            await fs.unlink(file.path);
+          } catch (err) {
+            console.error("Error deleting file:", err);
+          }
+          continue;
         }
 
         // Save document metadata
@@ -437,41 +523,39 @@ Question: ${question}`;
           fileSize: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
           filePath: file.path,
           uploadedBy: userId,
-          textContent,
+          textContent: normalizedText,
           embeddings: null, // Will be populated with vector embeddings
         });
 
-        // Create chunks and generate embeddings
-        if (textContent) {
-          const chunks = textContent.match(/.{1,1000}/g) || [];
+        // Create chunks and generate embeddings using intelligent chunking
+        const chunks = chunkText(normalizedText);
+        
+        for (let i = 0; i < chunks.length; i++) {
+          const chunk = chunks[i];
           
-          for (let i = 0; i < chunks.length; i++) {
-            const chunk = chunks[i];
+          // Generate embedding using Gemini
+          try {
+            const embeddingModel = genAI.getGenerativeModel({ model: "text-embedding-004" });
+            const embeddingResult = await embeddingModel.embedContent(chunk);
+            const embedding = embeddingResult.embedding.values;
             
-            // Generate embedding using Gemini
-            try {
-              const embeddingModel = genAI.getGenerativeModel({ model: "text-embedding-004" });
-              const embeddingResult = await embeddingModel.embedContent(chunk);
-              const embedding = embeddingResult.embedding.values;
-              
-              await storage.insertDocumentChunk({
-                documentId: doc.id,
-                chunkText: chunk,
-                chunkIndex: i.toString(),
-                embedding: embedding as any,
-                pageNumber: null,
-              });
-            } catch (embedError) {
-              console.error("Error generating embedding:", embedError);
-              // Continue without embedding if there's an error
-              await storage.insertDocumentChunk({
-                documentId: doc.id,
-                chunkText: chunk,
-                chunkIndex: i.toString(),
-                embedding: null,
-                pageNumber: null,
-              });
-            }
+            await storage.insertDocumentChunk({
+              documentId: doc.id,
+              chunkText: chunk,
+              chunkIndex: i.toString(),
+              embedding: embedding as any,
+              pageNumber: null,
+            });
+          } catch (embedError) {
+            console.error("Error generating embedding:", embedError);
+            // Continue without embedding if there's an error
+            await storage.insertDocumentChunk({
+              documentId: doc.id,
+              chunkText: chunk,
+              chunkIndex: i.toString(),
+              embedding: null,
+              pageNumber: null,
+            });
           }
         }
 
@@ -607,6 +691,71 @@ Question: ${question}`;
     } catch (error) {
       console.error("Error deleting document:", error);
       res.status(500).json({ message: "Failed to delete document" });
+    }
+  });
+
+  app.post('/api/documents/:id/regenerate-embeddings', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const doc = await storage.getDocument(id);
+      
+      if (!doc) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+
+      // Get existing chunks
+      const chunks = await storage.getDocumentChunks(id);
+      
+      // Re-normalize and re-chunk the text content
+      const normalizedText = normalizeText(doc.textContent || '');
+      
+      if (!normalizedText || normalizedText.length < 10) {
+        return res.status(400).json({ message: "Document has no valid text content" });
+      }
+
+      // Delete old chunks
+      for (const chunk of chunks) {
+        await storage.deleteDocumentChunk(chunk.id);
+      }
+
+      // Create new chunks with intelligent chunking
+      const newChunks = chunkText(normalizedText);
+      
+      let successCount = 0;
+      let failCount = 0;
+
+      for (let i = 0; i < newChunks.length; i++) {
+        const chunk = newChunks[i];
+        
+        try {
+          const embeddingModel = genAI.getGenerativeModel({ model: "text-embedding-004" });
+          const embeddingResult = await embeddingModel.embedContent(chunk);
+          const embedding = embeddingResult.embedding.values;
+          
+          await storage.insertDocumentChunk({
+            documentId: doc.id,
+            chunkText: chunk,
+            chunkIndex: i.toString(),
+            embedding: embedding as any,
+            pageNumber: null,
+          });
+          
+          successCount++;
+        } catch (embedError) {
+          console.error(`Error generating embedding for chunk ${i}:`, embedError);
+          failCount++;
+        }
+      }
+
+      res.json({ 
+        message: "Embeddings regenerated successfully",
+        chunksCreated: successCount,
+        chunksFailed: failCount,
+        totalChunks: newChunks.length
+      });
+    } catch (error) {
+      console.error("Error regenerating embeddings:", error);
+      res.status(500).json({ message: "Failed to regenerate embeddings" });
     }
   });
 

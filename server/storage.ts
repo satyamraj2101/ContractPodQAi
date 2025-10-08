@@ -82,6 +82,7 @@ export interface IStorage {
   // Document chunk operations
   getDocumentChunks(documentId: string): Promise<DocumentChunk[]>;
   insertDocumentChunk(chunk: InsertDocumentChunk): Promise<DocumentChunk>;
+  deleteDocumentChunk(id: string): Promise<void>;
   searchDocumentChunks(query: string, queryEmbedding: number[]): Promise<DocumentChunk[]>;
   
   // Document image operations
@@ -381,6 +382,10 @@ export class DatabaseStorage implements IStorage {
       .values(chunk)
       .returning();
     return documentChunk;
+  }
+
+  async deleteDocumentChunk(id: string): Promise<void> {
+    await db.delete(documentChunks).where(eq(documentChunks.id, id));
   }
 
   // Vector similarity search using embeddings
