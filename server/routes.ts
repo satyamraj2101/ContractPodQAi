@@ -92,7 +92,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const context = relevantChunks.map(chunk => chunk.chunkText).join('\n\n');
 
       // Generate AI response using Gemini
-      const chatModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const chatModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       const prompt = `You are a helpful documentation assistant for ContractPodAI, a contract lifecycle management platform. Answer questions based on the provided documentation context. If the context doesn't contain relevant information, say so clearly. Format your responses in markdown for better readability.
 
 Context from documentation:
