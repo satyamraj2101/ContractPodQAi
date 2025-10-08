@@ -82,7 +82,7 @@ export function ConversationSidebar({
             filteredConversations.map((conv) => (
               <Card
                 key={conv.id}
-                className={`p-3 cursor-pointer transition-colors hover-elevate ${
+                className={`p-4 cursor-pointer transition-colors hover-elevate ${
                   selectedConversationId === conv.id
                     ? "bg-primary/10 border-primary"
                     : ""
@@ -92,16 +92,18 @@ export function ConversationSidebar({
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-2">
                       <MessageSquare className="w-4 h-4 text-primary flex-shrink-0" />
-                      <h3 className="font-medium text-sm truncate">{conv.title}</h3>
+                      <h3 className="font-medium text-sm line-clamp-2 leading-relaxed">{conv.title}</h3>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      {conv.messageCount} {conv.messageCount === 1 ? "message" : "messages"}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {format(new Date(conv.updatedAt), "MMM d, h:mm a")}
-                    </p>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">
+                        {conv.messageCount} {conv.messageCount === 1 ? "message" : "messages"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {format(new Date(conv.updatedAt), "MMM d, h:mm a")}
+                      </p>
+                    </div>
                   </div>
                   <Button
                     variant="ghost"
