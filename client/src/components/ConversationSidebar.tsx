@@ -90,7 +90,7 @@ export function ConversationSidebar({
                 onClick={() => onSelectConversation(conv.id)}
                 data-testid={`conversation-${conv.id}`}
               >
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <MessageSquare className="w-4 h-4 text-primary flex-shrink-0" />
@@ -106,14 +106,14 @@ export function ConversationSidebar({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 flex-shrink-0"
+                    className="h-8 w-8 flex-shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                     onClick={(e) => {
                       e.stopPropagation();
                       onDeleteConversation(conv.id);
                     }}
                     data-testid={`button-delete-conversation-${conv.id}`}
                   >
-                    <Trash2 className="w-4 h-4 text-muted-foreground hover:text-destructive" />
+                    <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
               </Card>
