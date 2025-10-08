@@ -81,7 +81,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Generate embedding for the question using Gemini
-      const embeddingModel = genAI.getGenerativeModel({ model: "embedding-001" });
+      const embeddingModel = genAI.getGenerativeModel({ model: "text-embedding-004" });
       const questionEmbeddingResult = await embeddingModel.embedContent(question);
       const questionEmbedding = questionEmbeddingResult.embedding.values;
 
@@ -224,7 +224,7 @@ Question: ${question}`;
             
             // Generate embedding using Gemini
             try {
-              const embeddingModel = genAI.getGenerativeModel({ model: "embedding-001" });
+              const embeddingModel = genAI.getGenerativeModel({ model: "text-embedding-004" });
               const embeddingResult = await embeddingModel.embedContent(chunk);
               const embedding = embeddingResult.embedding.values;
               
