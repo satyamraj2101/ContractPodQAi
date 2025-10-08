@@ -108,12 +108,12 @@ export default function ChatPage() {
         return;
       }
       
-      // Check if it's an OpenAI quota error
+      // Check if it's a Gemini quota error
       const errorMessage = error.message || "";
       if (errorMessage.includes("quota") || errorMessage.includes("429")) {
         toast({
-          title: "OpenAI API Quota Exceeded",
-          description: "Your OpenAI API key has run out of credits. Please add credits to your OpenAI account.",
+          title: "Gemini API Quota Exceeded",
+          description: "Your Gemini API key has run out of quota. Please check your API key at Google AI Studio.",
           variant: "destructive",
           duration: 6000,
         });
