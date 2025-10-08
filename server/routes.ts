@@ -195,8 +195,17 @@ Question: ${question}`;
             const result = await mammoth.extractRawText({ buffer: dataBuffer });
             textContent = result.value;
           } else if (ext === '.ppt' || ext === '.pptx') {
-            // PPT/PPTX parsing is complex - for now, skip or show message
-            textContent = `[PowerPoint file - text extraction not yet supported. Filename: ${file.originalname}]`;
+            const officeparser = require('officeparser');
+            textContent = await new Promise((resolve, reject) => {
+              officeparser.parseOffice(file.path, (data: string, err: Error) => {
+                if (err) {
+                  console.error('Error parsing PowerPoint:', err);
+                  resolve(`[Error extracting text from PowerPoint: ${file.originalname}]`);
+                } else {
+                  resolve(data || `[No text content found in PowerPoint: ${file.originalname}]`);
+                }
+              });
+            });
           }
         } catch (parseError) {
           console.error(`Error parsing file ${file.originalname}:`, parseError);
