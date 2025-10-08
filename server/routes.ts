@@ -111,7 +111,7 @@ Question: ${question}`;
             id: `source-${index}`,
             filename: doc?.originalFilename || "Documentation",
             page: chunk.pageNumber ? parseInt(chunk.pageNumber) : undefined,
-            url: `/documents/${chunk.documentId}`,
+            url: `/api/documents/${chunk.documentId}`,
           };
         })
       );
@@ -256,6 +256,30 @@ Question: ${question}`;
     } catch (error) {
       console.error("Error uploading documents:", error);
       res.status(500).json({ message: "Failed to upload documents" });
+    }
+  });
+
+  app.get('/api/documents/:id', isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const doc = await storage.getDocument(id);
+      
+      if (!doc) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+
+      // Send the file for download
+      res.download(doc.filePath, doc.originalFilename, (err) => {
+        if (err) {
+          console.error("Error downloading file:", err);
+          if (!res.headersSent) {
+            res.status(500).json({ message: "Failed to download document" });
+          }
+        }
+      });
+    } catch (error) {
+      console.error("Error retrieving document:", error);
+      res.status(500).json({ message: "Failed to retrieve document" });
     }
   });
 
