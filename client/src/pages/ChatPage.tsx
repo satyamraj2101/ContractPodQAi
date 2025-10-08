@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Bot } from "lucide-react";
+import { Bot, Menu } from "lucide-react";
 import { ChatMessage } from "@/components/ChatMessage";
 import { ChatInput } from "@/components/ChatInput";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
@@ -49,6 +49,20 @@ export default function ChatPage() {
   const { toast } = useToast();
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    const saved = localStorage.getItem('chatSidebarOpen');
+    return saved !== null ? saved === 'true' : true;
+  });
+  
+  // Save sidebar state to localStorage
+  useEffect(() => {
+    localStorage.setItem('chatSidebarOpen', String(isSidebarOpen));
+  }, [isSidebarOpen]);
+  
+  // Toggle sidebar
+  const toggleSidebar = () => {
+    setIsSidebarOpen(prev => !prev);
+  };
   
   // Logout handler
   const handleLogout = async () => {
@@ -77,7 +91,10 @@ export default function ChatPage() {
   // Send message mutation
   const sendMessageMutation = useMutation({
     mutationFn: async (question: string) => {
-      const res = await apiRequest("POST", "/api/chat/message", { question });
+      const res = await apiRequest("POST", "/api/chat/message", { 
+        question,
+        conversationId: selectedConversationId 
+      });
       return await res.json();
     },
     onSuccess: (data: any) => {
@@ -210,25 +227,36 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-screen bg-background">
-      {/* Conversation Sidebar */}
-      <ConversationSidebar
-        conversations={conversations.map(conv => ({
-          id: conv.id,
-          title: conv.title || "New Conversation",
-          createdAt: conv.createdAt,
-          updatedAt: conv.updatedAt,
-          messageCount: conv.messageCount || 0,
-        }))}
-        selectedConversationId={selectedConversationId}
-        onSelectConversation={setSelectedConversationId}
-        onNewConversation={handleNewConversation}
-        onDeleteConversation={handleDeleteConversation}
-      />
+      {/* Conversation Sidebar with transition */}
+      <div className={`transition-all duration-300 ease-in-out ${isSidebarOpen ? 'w-80' : 'w-0'} overflow-hidden`}>
+        <ConversationSidebar
+          conversations={conversations.map(conv => ({
+            id: conv.id,
+            title: conv.title || "New Conversation",
+            createdAt: conv.createdAt,
+            updatedAt: conv.updatedAt,
+            messageCount: conv.messageCount || 0,
+          }))}
+          selectedConversationId={selectedConversationId}
+          onSelectConversation={setSelectedConversationId}
+          onNewConversation={handleNewConversation}
+          onDeleteConversation={handleDeleteConversation}
+        />
+      </div>
       
       <div className="flex-1 flex flex-col">
         {/* Enhanced Header with gradient and better spacing */}
         <header className="h-20 border-b border-border bg-gradient-to-r from-background via-background to-primary/5 px-8 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleSidebar}
+              data-testid="button-toggle-sidebar"
+              className="hover-elevate active-elevate-2"
+            >
+              <Menu className="w-5 h-5" />
+            </Button>
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-lg shadow-primary/20">
               <Bot className="w-6 h-6 text-primary-foreground" />
             </div>
