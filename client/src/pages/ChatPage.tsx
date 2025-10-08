@@ -2,8 +2,7 @@ import { useState, useEffect } from "react";
 import { Bot } from "lucide-react";
 import { ChatMessage } from "@/components/ChatMessage";
 import { ChatInput } from "@/components/ChatInput";
-import { DocumentSidebar } from "@/components/DocumentSidebar";
-import { UploadDialog } from "@/components/UploadDialog";
+import { ConversationSidebar } from "@/components/ConversationSidebar";
 import { EmptyState } from "@/components/EmptyState";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -48,8 +47,8 @@ interface Document {
 export default function ChatPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   
   // Logout handler
   const handleLogout = async () => {
@@ -62,15 +61,16 @@ export default function ChatPage() {
     }
   };
 
-  // Load chat history
-  const { data: chatHistory, isLoading: isLoadingHistory } = useQuery<any[]>({
-    queryKey: ["/api/chat/history"],
+  // Load conversations
+  const { data: conversations = [], isLoading: isLoadingConversations } = useQuery<any[]>({
+    queryKey: ["/api/conversations"],
     retry: false,
   });
 
-  // Load documents
-  const { data: documents = [] } = useQuery<Document[]>({
-    queryKey: ["/api/documents"],
+  // Load messages for selected conversation
+  const { data: conversationMessages, isLoading: isLoadingMessages } = useQuery<any[]>({
+    queryKey: ["/api/conversations", selectedConversationId, "messages"],
+    enabled: !!selectedConversationId,
     retry: false,
   });
 
@@ -104,7 +104,15 @@ export default function ChatPage() {
       };
       
       setMessages(prev => [...prev, userMsg, aiMsg]);
-      queryClient.invalidateQueries({ queryKey: ["/api/chat/history"] });
+      
+      // If this was a new conversation (no selectedConversationId), set it
+      if (!selectedConversationId && data.conversationId) {
+        setSelectedConversationId(data.conversationId);
+      }
+      
+      // Invalidate queries to refresh conversations list and messages
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations", selectedConversationId, "messages"] });
     },
     onError: async (error: Error) => {
       if (isUnauthorizedError(error)) {
@@ -139,10 +147,10 @@ export default function ChatPage() {
     },
   });
 
-  // Load chat history into messages
+  // Load conversation messages into state
   useEffect(() => {
-    if (chatHistory) {
-      const formattedMessages: Message[] = chatHistory.map((msg: any) => ({
+    if (conversationMessages) {
+      const formattedMessages: Message[] = conversationMessages.map((msg: any) => ({
         id: msg.id,
         role: msg.role,
         content: msg.content,
@@ -153,11 +161,46 @@ export default function ChatPage() {
         })
       }));
       setMessages(formattedMessages);
+    } else {
+      setMessages([]);
     }
-  }, [chatHistory]);
+  }, [conversationMessages]);
+
+  // Auto-select first conversation on load
+  useEffect(() => {
+    if (conversations.length > 0 && !selectedConversationId) {
+      setSelectedConversationId(conversations[0].id);
+    }
+  }, [conversations, selectedConversationId]);
 
   const handleSendMessage = (content: string) => {
     sendMessageMutation.mutate(content);
+  };
+
+  const handleNewConversation = () => {
+    setSelectedConversationId(null);
+    setMessages([]);
+  };
+
+  const handleDeleteConversation = async (id: string) => {
+    try {
+      await apiRequest("DELETE", `/api/conversations/${id}`, {});
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+      if (selectedConversationId === id) {
+        setSelectedConversationId(null);
+        setMessages([]);
+      }
+      toast({
+        title: "Conversation deleted",
+        description: "The conversation has been deleted successfully.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete conversation.",
+        variant: "destructive",
+      });
+    }
   };
 
   const isAdmin = (user as any)?.isAdmin || false;
@@ -167,24 +210,20 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-screen bg-background">
-      {/* Enhanced Sidebar with refined spacing */}
-      <div className="border-r border-border shadow-lg">
-        <DocumentSidebar
-          documents={documents.map(doc => ({
-            id: doc.id,
-            filename: doc.originalFilename,
-            fileType: doc.fileType,
-            fileSize: doc.fileSize,
-            uploadDate: new Date(doc.uploadDate).toLocaleDateString('en-US', { 
-              month: 'short', 
-              day: 'numeric', 
-              year: 'numeric' 
-            })
-          }))}
-          onUploadClick={() => setUploadDialogOpen(true)}
-          showUploadButton={isAdmin}
-        />
-      </div>
+      {/* Conversation Sidebar */}
+      <ConversationSidebar
+        conversations={conversations.map(conv => ({
+          id: conv.id,
+          title: conv.title || "New Conversation",
+          createdAt: conv.createdAt,
+          updatedAt: conv.updatedAt,
+          messageCount: conv.messageCount || 0,
+        }))}
+        selectedConversationId={selectedConversationId}
+        onSelectConversation={setSelectedConversationId}
+        onNewConversation={handleNewConversation}
+        onDeleteConversation={handleDeleteConversation}
+      />
       
       <div className="flex-1 flex flex-col">
         {/* Enhanced Header with gradient and better spacing */}
@@ -195,7 +234,7 @@ export default function ChatPage() {
             </div>
             <div>
               <h1 className="font-semibold text-xl">ContractPodAI Assistant</h1>
-              <p className="text-sm text-muted-foreground">Documentation Q&A</p>
+              <p className="text-sm text-muted-foreground">AI-Powered Documentation Assistant</p>
             </div>
           </div>
           
@@ -244,9 +283,9 @@ export default function ChatPage() {
         {/* Enhanced Chat Area with better spacing */}
         <ScrollArea className="flex-1 bg-gradient-to-b from-background to-background/95">
           <div className="max-w-5xl mx-auto px-8 py-12">
-            {isLoadingHistory ? (
+            {isLoadingMessages ? (
               <div className="flex items-center justify-center h-96">
-                <div className="animate-pulse text-muted-foreground">Loading chat history...</div>
+                <div className="animate-pulse text-muted-foreground">Loading messages...</div>
               </div>
             ) : messages.length === 0 ? (
               <EmptyState type="chat" />
@@ -268,10 +307,6 @@ export default function ChatPage() {
           />
         </div>
       </div>
-
-      {isAdmin && (
-        <UploadDialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen} />
-      )}
     </div>
   );
 }
