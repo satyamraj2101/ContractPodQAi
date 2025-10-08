@@ -38,10 +38,12 @@ function normalizeText(text: string): string {
   });
   
   return normalizedText
-    // Normalize whitespace (multiple spaces/newlines to single space)
-    .replace(/\s+/g, ' ')
-    // Remove control characters
-    .replace(/[\x00-\x1F\x7F]/g, '')
+    // Remove control characters (except newlines)
+    .replace(/[\x00-\x09\x0B-\x1F\x7F]/g, '')
+    // Normalize horizontal whitespace (multiple spaces/tabs to single space) but preserve newlines
+    .replace(/[ \t]+/g, ' ')
+    // Normalize multiple newlines to double newline (preserve paragraph breaks)
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
@@ -50,44 +52,32 @@ function chunkText(text: string, chunkSize: number = 1000): string[] {
   if (!text || text.length === 0) return [];
   
   const chunks: string[] = [];
-  const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+  
+  // Split by newlines first to preserve document structure, then recombine intelligently
+  const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
   
   let currentChunk = '';
   
-  for (const sentence of sentences) {
-    if ((currentChunk + sentence).length > chunkSize) {
-      if (currentChunk) {
+  for (const line of lines) {
+    // If adding this line would exceed chunk size
+    if (currentChunk && (currentChunk + '\n' + line).length > chunkSize) {
+      // Save current chunk
+      if (currentChunk.trim().length > 10) {
         chunks.push(currentChunk.trim());
-        currentChunk = sentence;
-      } else {
-        // Sentence is longer than chunk size, split it
-        const words = sentence.split(' ');
-        let wordChunk = '';
-        for (const word of words) {
-          if ((wordChunk + ' ' + word).length > chunkSize) {
-            if (wordChunk) {
-              chunks.push(wordChunk.trim());
-            }
-            wordChunk = word;
-          } else {
-            wordChunk += (wordChunk ? ' ' : '') + word;
-          }
-        }
-        if (wordChunk) {
-          currentChunk = wordChunk;
-        }
       }
+      currentChunk = line;
     } else {
-      currentChunk += (currentChunk ? ' ' : '') + sentence;
+      // Add line to current chunk
+      currentChunk += (currentChunk ? '\n' : '') + line;
     }
   }
   
-  if (currentChunk) {
+  // Don't forget the last chunk
+  if (currentChunk.trim().length > 10) {
     chunks.push(currentChunk.trim());
   }
   
-  // Filter out very short chunks (likely parsing artifacts)
-  return chunks.filter(chunk => chunk.length > 10);
+  return chunks;
 }
 
 // Helper function to convert URL/file to base64
