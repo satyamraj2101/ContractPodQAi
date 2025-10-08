@@ -52,6 +52,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
 
 const createUserSchema = z.object({
@@ -67,8 +68,33 @@ const createUserSchema = z.object({
 type CreateUserForm = z.infer<typeof createUserSchema>;
 
 export default function AdminPanel() {
+  const { user } = useAuth();
   const { toast } = useToast();
   const [createUserOpen, setCreateUserOpen] = useState(false);
+  
+  // Admin check
+  if (!(user as any)?.isAdmin) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <Card className="max-w-md w-full">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-destructive">
+              <Shield className="w-5 h-5" />
+              Access Denied
+            </CardTitle>
+            <CardDescription>
+              You do not have administrator privileges to access this page.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={() => window.location.href = '/'} className="w-full" data-testid="button-go-home">
+              Go to Home
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
   const [reviewRequestId, setReviewRequestId] = useState<string | null>(null);
   const [reviewNote, setReviewNote] = useState("");
