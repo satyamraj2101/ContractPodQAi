@@ -7,16 +7,14 @@ import multer from "multer";
 import path from "path";
 import fs from "fs/promises";
 import { createRequire } from 'module';
-import OpenAI from "openai";
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { insertChatMessageSchema, insertDocumentSchema } from "@shared/schema";
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
 
 const require = createRequire(import.meta.url);
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 // Configure multer for file uploads
 const upload = multer({
@@ -82,12 +80,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sources: null,
       });
 
-      // Generate embedding for the question
-      const questionEmbeddingResponse = await openai.embeddings.create({
-        model: "text-embedding-3-small",
-        input: question,
-      });
-      const questionEmbedding = questionEmbeddingResponse.data[0].embedding;
+      // Generate embedding for the question using Gemini
+      const embeddingModel = genAI.getGenerativeModel({ model: "embedding-001" });
+      const questionEmbeddingResult = await embeddingModel.embedContent(question);
+      const questionEmbedding = questionEmbeddingResult.embedding.values;
 
       // Search for relevant document chunks using vector similarity
       const relevantChunks = await storage.searchDocumentChunks(question, questionEmbedding);
@@ -95,24 +91,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Build context from relevant chunks
       const context = relevantChunks.map(chunk => chunk.chunkText).join('\n\n');
 
-      // Generate AI response using OpenAI
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: `You are a helpful documentation assistant for ContractPodAI, a contract lifecycle management platform. Answer questions based on the provided documentation context. If the context doesn't contain relevant information, say so clearly. Format your responses in markdown for better readability.`
-          },
-          {
-            role: "user",
-            content: `Context from documentation:\n${context}\n\nQuestion: ${question}`
-          }
-        ],
-        temperature: 0.7,
-        max_tokens: 500,
-      });
+      // Generate AI response using Gemini
+      const chatModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const prompt = `You are a helpful documentation assistant for ContractPodAI, a contract lifecycle management platform. Answer questions based on the provided documentation context. If the context doesn't contain relevant information, say so clearly. Format your responses in markdown for better readability.
 
-      const aiResponse = completion.choices[0]?.message?.content || "I couldn't generate a response.";
+Context from documentation:
+${context}
+
+Question: ${question}`;
+
+      const result = await chatModel.generateContent(prompt);
+      const aiResponse = result.response.text() || "I couldn't generate a response.";
 
       // Build sources from relevant chunks with actual document names
       const sources = await Promise.all(
@@ -142,10 +131,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Error processing chat message:", error);
       
-      // Handle OpenAI quota errors specifically
-      if (error?.status === 429 || error?.code === 'insufficient_quota') {
+      // Handle Gemini API errors specifically
+      if (error?.status === 429 || error?.message?.includes('quota')) {
         return res.status(429).json({ 
-          message: "OpenAI API quota exceeded. Please check your API key credits.",
+          message: "Gemini API quota exceeded. Please check your API key.",
           error: "quota_exceeded"
         });
       }
@@ -233,14 +222,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           for (let i = 0; i < chunks.length; i++) {
             const chunk = chunks[i];
             
-            // Generate embedding using OpenAI
+            // Generate embedding using Gemini
             try {
-              const embeddingResponse = await openai.embeddings.create({
-                model: "text-embedding-3-small",
-                input: chunk,
-              });
-              
-              const embedding = embeddingResponse.data[0].embedding;
+              const embeddingModel = genAI.getGenerativeModel({ model: "embedding-001" });
+              const embeddingResult = await embeddingModel.embedContent(chunk);
+              const embedding = embeddingResult.embedding.values;
               
               await storage.insertDocumentChunk({
                 documentId: doc.id,
