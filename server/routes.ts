@@ -6,7 +6,6 @@ import { setupAuth, isAuthenticated, isAdmin } from "./replitAuth";
 import multer from "multer";
 import path from "path";
 import fs from "fs/promises";
-import * as pdfParse from "pdf-parse";
 import OpenAI from "openai";
 import { insertChatMessageSchema, insertDocumentSchema } from "@shared/schema";
 
@@ -169,6 +168,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Extract text based on file type
         if (file.originalname.endsWith('.pdf')) {
           const dataBuffer = await fs.readFile(file.path);
+          // Dynamic import for pdf-parse (CommonJS module)
+          const pdfParse = (await import('pdf-parse')).default;
           const pdfData = await pdfParse(dataBuffer);
           textContent = pdfData.text;
         } else if (file.originalname.endsWith('.txt') || file.originalname.endsWith('.md')) {
