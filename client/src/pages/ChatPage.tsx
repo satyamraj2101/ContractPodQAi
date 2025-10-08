@@ -50,6 +50,17 @@ export default function ChatPage() {
   const { toast } = useToast();
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
+  
+  // Logout handler
+  const handleLogout = async () => {
+    try {
+      await apiRequest("POST", "/api/auth/logout", {});
+      window.location.href = '/';
+    } catch (error) {
+      console.error("Logout error:", error);
+      window.location.href = '/';
+    }
+  };
 
   // Load chat history
   const { data: chatHistory, isLoading: isLoadingHistory } = useQuery<any[]>({
@@ -98,12 +109,12 @@ export default function ChatPage() {
     onError: async (error: Error) => {
       if (isUnauthorizedError(error)) {
         toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
+          title: "Session Expired",
+          description: "Your session has expired. Please log in again.",
           variant: "destructive",
         });
         setTimeout(() => {
-          window.location.href = "/api/login";
+          window.location.href = "/login";
         }, 500);
         return;
       }
@@ -221,7 +232,7 @@ export default function ChatPage() {
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => window.location.href = '/api/auth/logout'} data-testid="button-logout">
+                <DropdownMenuItem onClick={handleLogout} data-testid="button-logout">
                   <LogOut className="w-4 h-4 mr-2" />
                   Logout
                 </DropdownMenuItem>
