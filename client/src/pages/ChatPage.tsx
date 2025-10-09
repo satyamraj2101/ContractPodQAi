@@ -199,12 +199,20 @@ export default function ChatPage() {
   const handleSelectConversation = (id: string) => {
     setSelectedConversationId(id);
     setHasManuallySelectedNew(false);
+    // Close sidebar on mobile after selection
+    if (window.innerWidth < 768) {
+      setIsSidebarOpen(false);
+    }
   };
 
   const handleNewConversation = () => {
     setSelectedConversationId(null);
     setMessages([]);
     setHasManuallySelectedNew(true);
+    // Close sidebar on mobile after creating new conversation
+    if (window.innerWidth < 768) {
+      setIsSidebarOpen(false);
+    }
   };
 
   const handleDeleteConversation = async (id: string) => {
@@ -235,9 +243,24 @@ export default function ChatPage() {
     : (user as any)?.email?.[0]?.toUpperCase() || 'U';
 
   return (
-    <div className="flex h-screen bg-background">
-      {/* Conversation Sidebar with transition */}
-      <div className={`transition-all duration-300 ease-in-out ${isSidebarOpen ? 'w-80' : 'w-0'} overflow-hidden`}>
+    <div className="flex h-screen bg-background relative">
+      {/* Mobile overlay backdrop */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={toggleSidebar}
+          data-testid="sidebar-overlay"
+        />
+      )}
+      
+      {/* Conversation Sidebar - Fixed on mobile, normal on desktop */}
+      <div className={`
+        fixed md:relative z-50 md:z-0 h-full
+        transition-transform duration-300 ease-in-out
+        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        ${isSidebarOpen ? 'md:w-80' : 'md:w-0'}
+        w-80 md:transition-all
+      `}>
         <ConversationSidebar
           conversations={conversations.map(conv => ({
             id: conv.id,
@@ -253,7 +276,7 @@ export default function ChatPage() {
         />
       </div>
       
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col w-full">
         {/* Enhanced Header with gradient and better spacing */}
         <header className="h-20 border-b border-border bg-gradient-to-r from-background via-background to-primary/5 px-8 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-4">
