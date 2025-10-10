@@ -903,7 +903,7 @@ Question: ${question}`;
 
   app.get('/api/admin/password-resets', isAuthenticated, isAdmin, async (_req, res) => {
     try {
-      const requests = await storage.getPasswordResetRequests();
+      const requests = await storage.getPasswordResetRequests('pending');
       res.json(requests);
     } catch (error) {
       console.error("Error fetching password reset requests:", error);
@@ -1112,6 +1112,16 @@ Question: ${question}`;
     } catch (error) {
       console.error("Error fetching feedbacks:", error);
       res.status(500).json({ message: "Failed to fetch feedbacks" });
+    }
+  });
+
+  app.get('/api/admin/activity', isAuthenticated, isAdmin, async (_req, res) => {
+    try {
+      const activity = await storage.getAllUsersActivity(30);
+      res.json(activity);
+    } catch (error) {
+      console.error("Error fetching activity:", error);
+      res.status(500).json({ message: "Failed to fetch activity" });
     }
   });
 

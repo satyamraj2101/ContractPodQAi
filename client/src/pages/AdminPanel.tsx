@@ -291,8 +291,8 @@ export default function AdminPanel() {
   });
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 p-4 md:p-6">
+      <div className="max-w-7xl mx-auto space-y-4 md:space-y-6">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
             <Shield className="w-8 h-8 text-primary" />
@@ -304,28 +304,30 @@ export default function AdminPanel() {
         </div>
 
         <Tabs defaultValue="users" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="users" data-testid="tab-users">
-              <Users className="w-4 h-4 mr-2" />
-              Users
-            </TabsTrigger>
-            <TabsTrigger value="resets" data-testid="tab-resets">
-              <Shield className="w-4 h-4 mr-2" />
-              Password Resets
-            </TabsTrigger>
-            <TabsTrigger value="activity" data-testid="tab-activity">
-              <Activity className="w-4 h-4 mr-2" />
-              Activity
-            </TabsTrigger>
-            <TabsTrigger value="feedback" data-testid="tab-feedback">
-              <MessageSquare className="w-4 h-4 mr-2" />
-              Feedback
-            </TabsTrigger>
-            <TabsTrigger value="documents" data-testid="tab-documents">
-              <FileText className="w-4 h-4 mr-2" />
-              Documents
-            </TabsTrigger>
-          </TabsList>
+          <div className="w-full overflow-x-auto pb-2">
+            <TabsList className="inline-flex md:grid md:w-full md:grid-cols-5 w-max">
+              <TabsTrigger value="users" data-testid="tab-users" className="flex-shrink-0">
+                <Users className="w-4 h-4 md:mr-2" />
+                <span className="hidden md:inline">Users</span>
+              </TabsTrigger>
+              <TabsTrigger value="resets" data-testid="tab-resets" className="flex-shrink-0">
+                <Shield className="w-4 h-4 md:mr-2" />
+                <span className="hidden md:inline">Password Resets</span>
+              </TabsTrigger>
+              <TabsTrigger value="activity" data-testid="tab-activity" className="flex-shrink-0">
+                <Activity className="w-4 h-4 md:mr-2" />
+                <span className="hidden md:inline">Activity</span>
+              </TabsTrigger>
+              <TabsTrigger value="feedback" data-testid="tab-feedback" className="flex-shrink-0">
+                <MessageSquare className="w-4 h-4 md:mr-2" />
+                <span className="hidden md:inline">Feedback</span>
+              </TabsTrigger>
+              <TabsTrigger value="documents" data-testid="tab-documents" className="flex-shrink-0">
+                <FileText className="w-4 h-4 md:mr-2" />
+                <span className="hidden md:inline">Documents</span>
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           {/* Users Tab */}
           <TabsContent value="users" className="space-y-4">
@@ -351,7 +353,7 @@ export default function AdminPanel() {
                     </DialogHeader>
                     <Form {...createUserForm}>
                       <form onSubmit={createUserForm.handleSubmit((data) => createUserMutation.mutate(data))} className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <FormField
                             control={createUserForm.control}
                             name="firstName"
@@ -405,7 +407,7 @@ export default function AdminPanel() {
                             </FormItem>
                           )}
                         />
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <FormField
                             control={createUserForm.control}
                             name="employeeId"
@@ -461,7 +463,8 @@ export default function AdminPanel() {
                 ) : users.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">No users found</div>
                 ) : (
-                  <Table>
+                  <div className="overflow-x-auto">
+                    <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>Name</TableHead>
@@ -524,6 +527,7 @@ export default function AdminPanel() {
                       ))}
                     </TableBody>
                   </Table>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -545,7 +549,8 @@ export default function AdminPanel() {
                     <p>No pending password reset requests</p>
                   </div>
                 ) : (
-                  <Table>
+                  <div className="overflow-x-auto">
+                    <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>User</TableHead>
@@ -602,6 +607,7 @@ export default function AdminPanel() {
                       ))}
                     </TableBody>
                   </Table>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -620,7 +626,8 @@ export default function AdminPanel() {
                 ) : activityData.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">No activity data available</div>
                 ) : (
-                  <Table>
+                  <div className="overflow-x-auto">
+                    <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>User</TableHead>
@@ -654,6 +661,7 @@ export default function AdminPanel() {
                       ))}
                     </TableBody>
                   </Table>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -738,7 +746,8 @@ export default function AdminPanel() {
                     <p className="text-sm">Upload documents to build the AI knowledge base</p>
                   </div>
                 ) : (
-                  <Table>
+                  <div className="overflow-x-auto">
+                    <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>Filename</TableHead>
@@ -782,6 +791,7 @@ export default function AdminPanel() {
                       ))}
                     </TableBody>
                   </Table>
+                  </div>
                 )}
               </CardContent>
             </Card>

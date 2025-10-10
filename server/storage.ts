@@ -52,6 +52,7 @@ export interface IStorage {
   recordLogin(loginData: InsertLoginHistory): Promise<LoginHistory>;
   getUserLoginHistory(userId: string, limit?: number): Promise<LoginHistory[]>;
   getUserActivityStats(userId: string, days?: number): Promise<{ loginCount: number; messageCount: number }>;
+  getAllUsersActivity(days?: number): Promise<any[]>;
   
   // Feedback operations
   createFeedback(feedback: InsertFeedback): Promise<Feedback>;
@@ -144,18 +145,32 @@ export class DatabaseStorage implements IStorage {
     return resetRequest;
   }
 
-  async getPasswordResetRequests(status?: string): Promise<PasswordResetRequest[]> {
-    if (status) {
-      return await db
-        .select()
-        .from(passwordResetRequests)
-        .where(eq(passwordResetRequests.status, status))
-        .orderBy(desc(passwordResetRequests.requestedAt));
-    }
-    return await db
-      .select()
+  async getPasswordResetRequests(status?: string): Promise<any[]> {
+    const query = db
+      .select({
+        id: passwordResetRequests.id,
+        userId: passwordResetRequests.userId,
+        newPasswordHash: passwordResetRequests.newPasswordHash,
+        status: passwordResetRequests.status,
+        reviewedBy: passwordResetRequests.reviewedBy,
+        reviewedAt: passwordResetRequests.reviewedAt,
+        reviewNote: passwordResetRequests.reviewNote,
+        requestedAt: passwordResetRequests.requestedAt,
+        user: {
+          id: users.id,
+          email: users.email,
+          firstName: users.firstName,
+          lastName: users.lastName,
+        }
+      })
       .from(passwordResetRequests)
+      .leftJoin(users, eq(passwordResetRequests.userId, users.id))
       .orderBy(desc(passwordResetRequests.requestedAt));
+    
+    if (status) {
+      return await query.where(eq(passwordResetRequests.status, status));
+    }
+    return await query;
   }
 
   async getUserPasswordResetRequests(userId: string): Promise<PasswordResetRequest[]> {
@@ -219,6 +234,65 @@ export class DatabaseStorage implements IStorage {
       loginCount: Number(logins[0]?.count || 0),
       messageCount: Number(messages[0]?.count || 0),
     };
+  }
+
+  async getAllUsersActivity(days: number = 30): Promise<any[]> {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+
+    // Get all users with their login and message counts
+    const allUsers = await db.select().from(users);
+    
+    const activityData = await Promise.all(
+      allUsers.map(async (user) => {
+        // Count logins
+        const logins = await db
+          .select({ count: drizzleSql<number>`count(*)` })
+          .from(loginHistory)
+          .where(and(
+            eq(loginHistory.userId, user.id),
+            gte(loginHistory.loginAt, cutoffDate)
+          ));
+
+        // Count messages
+        const messages = await db
+          .select({ count: drizzleSql<number>`count(*)` })
+          .from(chatMessages)
+          .where(and(
+            eq(chatMessages.userId, user.id),
+            gte(chatMessages.timestamp, cutoffDate)
+          ));
+
+        // Count conversations
+        const convos = await db
+          .select({ count: drizzleSql<number>`count(*)` })
+          .from(conversations)
+          .where(eq(conversations.userId, user.id));
+
+        // Get last login
+        const lastLogin = await db
+          .select()
+          .from(loginHistory)
+          .where(eq(loginHistory.userId, user.id))
+          .orderBy(desc(loginHistory.loginAt))
+          .limit(1);
+
+        return {
+          userId: user.id,
+          user: {
+            firstName: user.firstName,
+            lastName: user.lastName,
+            email: user.email,
+          },
+          loginCount: Number(logins[0]?.count || 0),
+          messageCount: Number(messages[0]?.count || 0),
+          conversationCount: Number(convos[0]?.count || 0),
+          lastLogin: lastLogin[0]?.loginAt || null,
+        };
+      })
+    );
+
+    return activityData.filter(a => a.loginCount > 0 || a.messageCount > 0);
   }
 
   // Feedback operations
