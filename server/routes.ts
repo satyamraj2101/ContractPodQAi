@@ -389,6 +389,8 @@ Question: ${question}`;
                 page: chunk.pageNumber ? parseInt(chunk.pageNumber) : undefined,
                 url: `/api/documents/${chunk.documentId}`,
               });
+            } else {
+              console.warn(`⚠️  Document metadata not found for chunk's documentId: ${chunk.documentId}`);
             }
           }
         }
