@@ -373,17 +373,28 @@ Question: ${question}`;
       const aiResponse = result.response.text() || "I couldn't generate a response.";
 
       // Only build sources if we found relevant context
-      const sources = hasRelevantContext ? await Promise.all(
-        relevantChunks.map(async (chunk: any, index: number) => {
-          const doc = await storage.getDocument(chunk.documentId);
-          return {
-            id: `source-${index}`,
-            filename: doc?.originalFilename || "Documentation",
-            page: chunk.pageNumber ? parseInt(chunk.pageNumber) : undefined,
-            url: `/api/documents/${chunk.documentId}`,
-          };
-        })
-      ) : [];
+      // Deduplicate sources by document ID
+      const sources = hasRelevantContext ? await (async () => {
+        const uniqueDocIds = new Set<string>();
+        const uniqueSources = [];
+        
+        for (const chunk of relevantChunks) {
+          if (!uniqueDocIds.has(chunk.documentId)) {
+            uniqueDocIds.add(chunk.documentId);
+            const doc = await storage.getDocument(chunk.documentId);
+            if (doc) {
+              uniqueSources.push({
+                id: `source-${chunk.documentId}`,
+                filename: doc.originalFilename || "Documentation",
+                page: chunk.pageNumber ? parseInt(chunk.pageNumber) : undefined,
+                url: `/api/documents/${chunk.documentId}`,
+              });
+            }
+          }
+        }
+        
+        return uniqueSources;
+      })() : [];
 
       // Save assistant message
       const assistantMessage = await storage.insertChatMessage({
