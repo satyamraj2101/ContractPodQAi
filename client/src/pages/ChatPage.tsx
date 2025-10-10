@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Bot, Menu } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Bot, Menu, Trash2, Loader2 } from "lucide-react";
 import { ChatMessage } from "@/components/ChatMessage";
 import { ChatInput } from "@/components/ChatInput";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
@@ -15,12 +15,24 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { LogOut, User, Shield } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface Message {
   id: string;
@@ -54,6 +66,8 @@ export default function ChatPage() {
     const saved = localStorage.getItem('chatSidebarOpen');
     return saved !== null ? saved === 'true' : true;
   });
+  const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   
   // Save sidebar state to localStorage
   useEffect(() => {
@@ -89,9 +103,15 @@ export default function ChatPage() {
     retry: false,
   });
 
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isWaitingForResponse]);
+
   // Send message mutation
   const sendMessageMutation = useMutation({
     mutationFn: async (question: string) => {
+      setIsWaitingForResponse(true);
       const res = await apiRequest("POST", "/api/chat/message", { 
         question,
         conversationId: selectedConversationId 
@@ -99,6 +119,8 @@ export default function ChatPage() {
       return await res.json();
     },
     onSuccess: (data: any) => {
+      setIsWaitingForResponse(false);
+      
       // Add both messages to the UI
       const userMsg: Message = {
         id: data.userMessage.id,
@@ -134,6 +156,8 @@ export default function ChatPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/conversations", selectedConversationId, "messages"] });
     },
     onError: async (error: Error) => {
+      setIsWaitingForResponse(false);
+      
       if (isUnauthorizedError(error)) {
         toast({
           title: "Session Expired",
@@ -237,6 +261,28 @@ export default function ChatPage() {
     }
   };
 
+  const handleClearChat = async () => {
+    if (!selectedConversationId) return;
+    
+    try {
+      await apiRequest("DELETE", `/api/conversations/${selectedConversationId}`, {});
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+      setSelectedConversationId(null);
+      setMessages([]);
+      setHasManuallySelectedNew(true);
+      toast({
+        title: "Chat cleared",
+        description: "The conversation has been cleared successfully.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to clear chat.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const isAdmin = (user as any)?.isAdmin || false;
   const userInitials = (user as any)?.firstName && (user as any)?.lastName 
     ? `${(user as any).firstName[0]}${(user as any).lastName[0]}`.toUpperCase()
@@ -299,6 +345,29 @@ export default function ChatPage() {
           </div>
           
           <div className="flex items-center gap-3">
+            {selectedConversationId && messages.length > 0 && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="ghost" size="icon" data-testid="button-clear-chat" title="Clear chat">
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Clear this conversation?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will permanently delete all messages in this conversation. This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleClearChat} data-testid="confirm-clear-chat">
+                      Clear Chat
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
             <ThemeToggle />
             <div className="h-6 w-px bg-border" />
             <DropdownMenu>
@@ -351,9 +420,34 @@ export default function ChatPage() {
               <EmptyState type="chat" />
             ) : (
               <div className="space-y-8">
-                {messages.map((message) => (
-                  <ChatMessage key={message.id} {...message} />
-                ))}
+                <AnimatePresence mode="popLayout">
+                  {messages.map((message) => (
+                    <motion.div
+                      key={message.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -20 }}
+                      transition={{ duration: 0.3, ease: "easeOut" }}
+                    >
+                      <ChatMessage {...message} />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+                
+                {/* Loading indicator when waiting for AI response */}
+                {isWaitingForResponse && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-center gap-3 p-6 bg-muted/50 rounded-xl border border-border"
+                  >
+                    <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                    <p className="text-sm text-muted-foreground">AI is thinking...</p>
+                  </motion.div>
+                )}
+                
+                {/* Invisible div for auto-scroll */}
+                <div ref={messagesEndRef} />
               </div>
             )}
           </div>

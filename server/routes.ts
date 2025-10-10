@@ -775,7 +775,19 @@ Question: ${question}`;
     try {
       const userId = (req.user as any).id;
       const conversations = await storage.getUserConversations(userId);
-      res.json(conversations);
+      
+      // Add message count to each conversation
+      const conversationsWithCount = await Promise.all(
+        conversations.map(async (conv) => {
+          const messages = await storage.getConversationMessages(conv.id);
+          return {
+            ...conv,
+            messageCount: messages.length,
+          };
+        })
+      );
+      
+      res.json(conversationsWithCount);
     } catch (error) {
       console.error("Error fetching conversations:", error);
       res.status(500).json({ message: "Failed to fetch conversations" });

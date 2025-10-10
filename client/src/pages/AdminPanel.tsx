@@ -112,7 +112,7 @@ export default function AdminPanel() {
 
   // Fetch password reset requests
   const { data: resetRequests = [], isLoading: requestsLoading } = useQuery<any[]>({
-    queryKey: ["/api/admin/password-resets/pending"],
+    queryKey: ["/api/admin/password-resets"],
   });
 
   // Fetch activity data
@@ -235,7 +235,7 @@ export default function AdminPanel() {
       return res.json();
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/password-resets/pending"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/password-resets"] });
       setReviewRequestId(null);
       setReviewNote("");
       setReviewAction(null);
