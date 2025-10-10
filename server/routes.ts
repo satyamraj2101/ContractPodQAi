@@ -643,13 +643,21 @@ Question: ${question}`;
         return res.status(404).json({ message: "Document not found" });
       }
 
+      // Convert relative path to absolute path
+      const absolutePath = path.resolve(doc.filePath);
+      console.log(`📥 Downloading document: ${doc.originalFilename} from ${absolutePath}`);
+
       // Send the file for download
-      res.download(doc.filePath, doc.originalFilename, (err) => {
+      res.download(absolutePath, doc.originalFilename, (err) => {
         if (err) {
-          console.error("Error downloading file:", err);
+          console.error("❌ Error downloading file:", err);
+          console.error("   File path:", absolutePath);
+          console.error("   Original filename:", doc.originalFilename);
           if (!res.headersSent) {
             res.status(500).json({ message: "Failed to download document" });
           }
+        } else {
+          console.log(`✅ Successfully downloaded: ${doc.originalFilename}`);
         }
       });
     } catch (error) {
