@@ -299,13 +299,11 @@ export default function ChatPage() {
         />
       )}
       
-      {/* Conversation Sidebar - Fixed on mobile, normal on desktop */}
+      {/* Conversation Sidebar - Always visible on desktop, toggleable on mobile */}
       <div className={`
-        fixed md:relative z-50 md:z-0 h-full
+        fixed md:relative z-50 md:z-0 h-full w-80
         transition-transform duration-300 ease-in-out
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-        ${isSidebarOpen ? 'md:w-80' : 'md:w-0'}
-        w-80 md:transition-all
       `}>
         <ConversationSidebar
           conversations={conversations.map(conv => ({
@@ -331,7 +329,7 @@ export default function ChatPage() {
               size="icon"
               onClick={toggleSidebar}
               data-testid="button-toggle-sidebar"
-              className="hover-elevate active-elevate-2"
+              className="md:hidden hover-elevate active-elevate-2"
             >
               <Menu className="w-5 h-5" />
             </Button>
