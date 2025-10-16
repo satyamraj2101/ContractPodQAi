@@ -37,7 +37,10 @@ export const users = pgTable("users", {
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  // Enforce lowercase emails at database level
+  emailLowercaseCheck: sql`CHECK (email = LOWER(email))`,
+}));
 
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -122,6 +125,29 @@ export const insertFeedbackSchema = createInsertSchema(feedbacks).omit({
 
 export type InsertFeedback = z.infer<typeof insertFeedbackSchema>;
 export type Feedback = typeof feedbacks.$inferSelect;
+
+// General feedback submissions with optional attachments
+export const feedbackSubmissions = pgTable("feedback_submissions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  feedbackText: text("feedback_text").notNull(),
+  attachmentPath: varchar("attachment_path"), // Optional file attachment
+  attachmentFilename: varchar("attachment_filename"), // Original filename
+  submittedAt: timestamp("submitted_at").defaultNow().notNull(),
+  status: varchar("status").default("unread").notNull(), // 'unread', 'read', 'resolved'
+}, (table) => [
+  index("idx_feedback_submissions_user_id").on(table.userId),
+  index("idx_feedback_submissions_submitted_at").on(table.submittedAt),
+  index("idx_feedback_submissions_status").on(table.status),
+]);
+
+export const insertFeedbackSubmissionSchema = createInsertSchema(feedbackSubmissions).omit({
+  id: true,
+  submittedAt: true,
+});
+
+export type InsertFeedbackSubmission = z.infer<typeof insertFeedbackSubmissionSchema>;
+export type FeedbackSubmission = typeof feedbackSubmissions.$inferSelect;
 
 // Conversations table (chat grouping)
 export const conversations = pgTable("conversations", {

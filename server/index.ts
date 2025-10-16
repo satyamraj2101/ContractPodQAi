@@ -1,6 +1,8 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { mkdir } from "fs/promises";
+import { join } from "path";
 
 const app = express();
 app.use(express.json());
@@ -37,6 +39,15 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Ensure required directories exist
+  const uploadsDir = join(process.cwd(), 'uploads');
+  const feedbackDir = join(process.cwd(), 'feedback');
+  
+  await mkdir(uploadsDir, { recursive: true });
+  await mkdir(feedbackDir, { recursive: true });
+  
+  log('📁 Created/verified uploads and feedback directories');
+
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

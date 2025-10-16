@@ -56,7 +56,8 @@ export async function setupAuth(app: Express) {
       },
       async (email, password, done) => {
         try {
-          const user = await storage.getUserByEmail(email);
+          // Normalize email to lowercase for case-insensitive login
+          const user = await storage.getUserByEmail(email.toLowerCase());
           
           if (!user) {
             return done(null, false, { message: "Invalid email or password" });
@@ -107,8 +108,11 @@ export async function setupAuth(app: Express) {
         return res.status(400).json({ message: "Email and password are required" });
       }
 
+      // Normalize email to lowercase
+      const normalizedEmail = email.toLowerCase();
+
       // Check if user already exists
-      const existingUser = await storage.getUserByEmail(email);
+      const existingUser = await storage.getUserByEmail(normalizedEmail);
       if (existingUser) {
         return res.status(400).json({ message: "User with this email already exists" });
       }
@@ -118,7 +122,7 @@ export async function setupAuth(app: Express) {
 
       // Create user
       const user = await storage.createUser({
-        email,
+        email: normalizedEmail,
         passwordHash,
         firstName,
         lastName,

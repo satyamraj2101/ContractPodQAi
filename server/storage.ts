@@ -8,6 +8,7 @@ import {
   passwordResetRequests,
   loginHistory,
   feedbacks,
+  feedbackSubmissions,
   conversations,
   type User,
   type InsertUser,
@@ -26,6 +27,8 @@ import {
   type InsertLoginHistory,
   type Feedback,
   type InsertFeedback,
+  type FeedbackSubmission,
+  type InsertFeedbackSubmission,
   type Conversation,
   type InsertConversation,
 } from "@shared/schema";
@@ -58,6 +61,13 @@ export interface IStorage {
   createFeedback(feedback: InsertFeedback): Promise<Feedback>;
   getAllFeedbacks(): Promise<Feedback[]>;
   getUserFeedbacks(userId: string): Promise<Feedback[]>;
+  
+  // Feedback submission operations (general user feedback)
+  createFeedbackSubmission(submission: InsertFeedbackSubmission): Promise<FeedbackSubmission>;
+  getAllFeedbackSubmissions(): Promise<any[]>;
+  getUserFeedbackSubmissions(userId: string): Promise<FeedbackSubmission[]>;
+  updateFeedbackSubmissionStatus(id: string, status: string): Promise<FeedbackSubmission>;
+  getFeedbackSubmission(id: string): Promise<FeedbackSubmission | undefined>;
   
   // Conversation operations
   createConversation(conversation: InsertConversation): Promise<Conversation>;
@@ -99,32 +109,49 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.email, email));
+    // Always normalize email to lowercase for case-insensitive lookup
+    const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
     return user;
   }
 
   async createUser(user: InsertUser): Promise<User> {
-    const [newUser] = await db.insert(users).values(user).returning();
+    // Always normalize email to lowercase before storing
+    const userData = {
+      ...user,
+      email: user.email?.toLowerCase(),
+    };
+    const [newUser] = await db.insert(users).values(userData).returning();
     return newUser;
   }
 
   async updateUser(id: string, updates: Partial<InsertUser>): Promise<User> {
+    // Always normalize email to lowercase if email is being updated
+    const updateData = {
+      ...updates,
+      ...(updates.email && { email: updates.email.toLowerCase() }),
+      updatedAt: new Date(),
+    };
     const [updatedUser] = await db
       .update(users)
-      .set({ ...updates, updatedAt: new Date() })
+      .set(updateData)
       .where(eq(users.id, id))
       .returning();
     return updatedUser;
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
+    // Always normalize email to lowercase before storing
+    const normalizedData = {
+      ...userData,
+      ...(userData.email && { email: userData.email.toLowerCase() }),
+    };
     const [user] = await db
       .insert(users)
-      .values(userData)
+      .values(normalizedData)
       .onConflictDoUpdate({
         target: users.id,
         set: {
-          ...userData,
+          ...normalizedData,
           updatedAt: new Date(),
         },
       })
@@ -317,6 +344,61 @@ export class DatabaseStorage implements IStorage {
       .from(feedbacks)
       .where(eq(feedbacks.userId, userId))
       .orderBy(desc(feedbacks.submittedAt));
+  }
+
+  // Feedback submission operations (general user feedback)
+  async createFeedbackSubmission(submission: InsertFeedbackSubmission): Promise<FeedbackSubmission> {
+    const [newSubmission] = await db
+      .insert(feedbackSubmissions)
+      .values(submission)
+      .returning();
+    return newSubmission;
+  }
+
+  async getAllFeedbackSubmissions(): Promise<any[]> {
+    return await db
+      .select({
+        id: feedbackSubmissions.id,
+        feedbackText: feedbackSubmissions.feedbackText,
+        attachmentPath: feedbackSubmissions.attachmentPath,
+        attachmentFilename: feedbackSubmissions.attachmentFilename,
+        submittedAt: feedbackSubmissions.submittedAt,
+        status: feedbackSubmissions.status,
+        user: {
+          id: users.id,
+          email: users.email,
+          firstName: users.firstName,
+          lastName: users.lastName,
+        }
+      })
+      .from(feedbackSubmissions)
+      .leftJoin(users, eq(feedbackSubmissions.userId, users.id))
+      .orderBy(desc(feedbackSubmissions.submittedAt));
+  }
+
+  async getUserFeedbackSubmissions(userId: string): Promise<FeedbackSubmission[]> {
+    return await db
+      .select()
+      .from(feedbackSubmissions)
+      .where(eq(feedbackSubmissions.userId, userId))
+      .orderBy(desc(feedbackSubmissions.submittedAt));
+  }
+
+  async updateFeedbackSubmissionStatus(id: string, status: string): Promise<FeedbackSubmission> {
+    const [updated] = await db
+      .update(feedbackSubmissions)
+      .set({ status })
+      .where(eq(feedbackSubmissions.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getFeedbackSubmission(id: string): Promise<FeedbackSubmission | undefined> {
+    const [submission] = await db
+      .select()
+      .from(feedbackSubmissions)
+      .where(eq(feedbackSubmissions.id, id));
+    return submission;
   }
 
   // Conversation operations

@@ -8,6 +8,7 @@ import path from "path";
 import fs from "fs/promises";
 import { createRequire } from 'module';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { generateContentWithFailover, generateEmbeddingWithFailover } from "./gemini-failover";
 import { insertChatMessageSchema, insertDocumentSchema } from "@shared/schema";
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
@@ -255,7 +256,7 @@ async function describeImageWithGemini(imageData: string): Promise<string> {
   }
 }
 
-// Configure multer for file uploads
+// Configure multer for document uploads
 const upload = multer({
   dest: "uploads/",
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
@@ -268,6 +269,21 @@ const upload = multer({
       cb(new Error('Invalid file type. Only PDF, PPT, PPTX, DOCX, TXT, MD, XLSX, XLS, HTML, and HTM files are allowed.'));
     }
   }
+});
+
+// Configure multer for feedback attachments
+const feedbackUpload = multer({
+  dest: "feedback/",
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit for feedback attachments
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const allowedTypes = ['.pdf', '.png', '.jpg', '.jpeg', '.txt', '.docx', '.xlsx'];
+    if (allowedTypes.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type for feedback attachment'));
+    }
+  },
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -337,10 +353,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sources: null,
       });
 
-      // Generate embedding for the question using Gemini
-      const embeddingModel = genAI.getGenerativeModel({ model: "text-embedding-004" });
-      const questionEmbeddingResult = await embeddingModel.embedContent(question);
-      const questionEmbedding = questionEmbeddingResult.embedding.values;
+      // Generate embedding for the question using Gemini with failover
+      const { embedding: questionEmbedding } = await generateEmbeddingWithFailover(question);
 
       // Search for relevant document chunks using vector similarity
       const relevantChunks = await storage.searchDocumentChunks(question, questionEmbedding);
@@ -351,26 +365,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Determine if we have relevant context (non-empty and meaningful)
       const hasRelevantContext = context.trim().length > 0 && relevantChunks.length > 0;
 
+      // Get conversation history for context (last 10 messages, excluding the current one)
+      const conversationHistory = await storage.getConversationMessages(conversation.id);
+      const previousMessages = conversationHistory
+        .slice(0, -1) // Exclude the user message we just saved
+        .slice(-10) // Get last 10 messages for context
+        .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
+        .join('\n\n');
+
       // Generate AI response using Gemini
       const chatModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      const prompt = hasRelevantContext 
-        ? `You are a helpful documentation assistant for ContractPodAI, a contract lifecycle management platform. Answer questions based on the provided documentation context. If the context doesn't contain relevant information, say so clearly. Format your responses in markdown for better readability.
+      
+      // Build prompt with conversation history for context-aware responses
+      const conversationContext = previousMessages.length > 0 
+        ? `\n\nPrevious conversation:\n${previousMessages}\n\n` 
+        : '';
 
+      const prompt = hasRelevantContext 
+        ? `You are a helpful documentation assistant for ContractPodAI, a contract lifecycle management platform. Answer questions based on the provided documentation context and the conversation history. If the context doesn't contain relevant information, say so clearly. Format your responses in markdown for better readability.${conversationContext}
 Context from documentation:
 ${context}
 
-Question: ${question}`
-        : `You are a helpful documentation assistant for ContractPodAI, a contract lifecycle management platform. The user asked a question but no relevant documentation was found in the knowledge base.
-
+Current question: ${question}`
+        : `You are a helpful documentation assistant for ContractPodAI, a contract lifecycle management platform. The user asked a question but no relevant documentation was found in the knowledge base.${conversationContext}
 Please politely inform the user that you don't have information about their question in the available documentation, and suggest they:
 1. Try rephrasing their question
 2. Check if the documentation has been uploaded
 3. Contact the admin if they believe relevant documents are missing
 
-Question: ${question}`;
+Current question: ${question}`;
 
-      const result = await chatModel.generateContent(prompt);
-      const aiResponse = result.response.text() || "I couldn't generate a response.";
+      const { text: aiResponse, modelUsed } = await generateContentWithFailover(prompt, {
+        preferredModel: 'gemini-2.5-flash'
+      });
+      console.log(`🤖 AI response generated using model: ${modelUsed}`);
 
       // Only build sources if we found relevant context
       // Deduplicate sources by document ID
@@ -536,11 +564,9 @@ Question: ${question}`;
         for (let i = 0; i < chunks.length; i++) {
           const chunk = chunks[i];
           
-          // Generate embedding using Gemini
+          // Generate embedding using Gemini with failover
           try {
-            const embeddingModel = genAI.getGenerativeModel({ model: "text-embedding-004" });
-            const embeddingResult = await embeddingModel.embedContent(chunk);
-            const embedding = embeddingResult.embedding.values;
+            const { embedding } = await generateEmbeddingWithFailover(chunk);
             
             await storage.insertDocumentChunk({
               documentId: doc.id,
@@ -605,10 +631,8 @@ Question: ${question}`;
               
               // Generate embedding for the AI description and add as searchable chunk
               try {
-                const embeddingModel = genAI.getGenerativeModel({ model: "text-embedding-004" });
                 const descriptionText = `[IMAGE DESCRIPTION]: ${aiDescription}\n[CONTEXT]: ${context}`;
-                const embeddingResult = await embeddingModel.embedContent(descriptionText);
-                const embedding = embeddingResult.embedding.values;
+                const { embedding } = await generateEmbeddingWithFailover(descriptionText);
                 
                 // Add image description as a searchable chunk
                 await storage.insertDocumentChunk({
@@ -739,9 +763,7 @@ Question: ${question}`;
         const chunk = newChunks[i];
         
         try {
-          const embeddingModel = genAI.getGenerativeModel({ model: "text-embedding-004" });
-          const embeddingResult = await embeddingModel.embedContent(chunk);
-          const embedding = embeddingResult.embedding.values;
+          const { embedding } = await generateEmbeddingWithFailover(chunk);
           
           await storage.insertDocumentChunk({
             documentId: doc.id,
@@ -844,8 +866,11 @@ Question: ${question}`;
         return res.status(400).json({ message: "New password is required and must be at least 8 characters" });
       }
 
+      // Normalize email to lowercase
+      const normalizedEmail = email.toLowerCase();
+
       // Check if user exists
-      const user = await storage.getUserByEmail(email);
+      const user = await storage.getUserByEmail(normalizedEmail);
       
       // Always hash the password to prevent timing attacks (whether user exists or not)
       const bcrypt = require("bcryptjs");
@@ -989,8 +1014,11 @@ Question: ${question}`;
         return res.status(400).json({ message: "Email and password are required" });
       }
 
+      // Normalize email to lowercase
+      const normalizedEmail = email.toLowerCase();
+
       // Check if user already exists
-      const existing = await storage.getUserByEmail(email);
+      const existing = await storage.getUserByEmail(normalizedEmail);
       if (existing) {
         return res.status(400).json({ message: "User with this email already exists" });
       }
@@ -999,7 +1027,7 @@ Question: ${question}`;
       const passwordHash = await bcrypt.hash(password, 10);
 
       const user = await storage.createUser({
-        email,
+        email: normalizedEmail,
         passwordHash,
         firstName,
         lastName,
@@ -1112,6 +1140,86 @@ Question: ${question}`;
     } catch (error) {
       console.error("Error fetching feedbacks:", error);
       res.status(500).json({ message: "Failed to fetch feedbacks" });
+    }
+  });
+
+  // Feedback submission routes (general user feedback with attachments)
+  app.post('/api/feedback-submission', isAuthenticated, feedbackUpload.single('attachment'), async (req: any, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const { feedbackText } = req.body;
+
+      if (!feedbackText || feedbackText.trim().length === 0) {
+        return res.status(400).json({ message: "Feedback text is required" });
+      }
+
+      const submission = await storage.createFeedbackSubmission({
+        userId,
+        feedbackText: feedbackText.trim(),
+        attachmentPath: req.file?.path || null,
+        attachmentFilename: req.file?.originalname || null,
+        status: 'unread',
+      });
+
+      res.json({ message: "Feedback submitted successfully", submission });
+    } catch (error) {
+      console.error("Error submitting feedback:", error);
+      res.status(500).json({ message: "Failed to submit feedback" });
+    }
+  });
+
+  app.get('/api/admin/feedback-submissions', isAuthenticated, isAdmin, async (_req, res) => {
+    try {
+      const submissions = await storage.getAllFeedbackSubmissions();
+      res.json(submissions);
+    } catch (error) {
+      console.error("Error fetching feedback submissions:", error);
+      res.status(500).json({ message: "Failed to fetch feedback submissions" });
+    }
+  });
+
+  app.patch('/api/admin/feedback-submissions/:id/status', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+
+      if (!['unread', 'read', 'resolved'].includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+
+      const updated = await storage.updateFeedbackSubmissionStatus(id, status);
+      res.json({ message: "Status updated successfully", submission: updated });
+    } catch (error) {
+      console.error("Error updating feedback status:", error);
+      res.status(500).json({ message: "Failed to update status" });
+    }
+  });
+
+  app.get('/api/admin/feedback-submissions/:id/download', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const submission = await storage.getFeedbackSubmission(id);
+
+      if (!submission) {
+        return res.status(404).json({ message: "Feedback submission not found" });
+      }
+
+      if (!submission.attachmentPath) {
+        return res.status(404).json({ message: "No attachment found" });
+      }
+
+      const absolutePath = path.resolve(submission.attachmentPath);
+      res.download(absolutePath, submission.attachmentFilename || 'attachment', (err) => {
+        if (err) {
+          console.error("Error downloading feedback attachment:", err);
+          if (!res.headersSent) {
+            res.status(500).json({ message: "Failed to download attachment" });
+          }
+        }
+      });
+    } catch (error) {
+      console.error("Error retrieving feedback attachment:", error);
+      res.status(500).json({ message: "Failed to retrieve attachment" });
     }
   });
 

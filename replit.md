@@ -40,6 +40,8 @@ Preferred communication style: Simple, everyday language.
 
 **AI Integration**
 - **Google Gemini AI** (`@google/generative-ai`) for natural language processing
+- **Automatic Failover System** - Tiered model fallback on rate limits (gemini-2.5-flash → gemini-2.5-flash-lite → gemini-2.0-flash-exp → gemini-1.5-flash → gemini-1.5-pro)
+- **Conversation Memory** - Last 10 messages included as context for follow-up questions
 - Document processing pipeline:
   1. File upload and validation
   2. Text extraction (PDF via pdf-parse, DOCX via mammoth, XLSX via xlsx)
@@ -53,6 +55,7 @@ Preferred communication style: Simple, everyday language.
 - **Session Management** - express-session with PostgreSQL store (connect-pg-simple)
 - **Role-Based Access Control** - Admin flags for privileged operations
 - **Password Reset Flow** - User requests, admin approves with optional notes
+- **Email Case-Insensitive Login** - All emails normalized to lowercase in storage layer for consistent lookup
 - **Secure Practices** - httpOnly cookies, server-side hashing, session timeouts
 
 ### Data Storage
@@ -68,9 +71,10 @@ Preferred communication style: Simple, everyday language.
 - `conversations` - User conversation containers (5 max per user)
 - `conversationMessages` - Individual messages within conversations with role (user/assistant)
 - `passwordResetRequests` - Admin-approved password reset workflow with notes
-- `userActivity` - 30-day rolling window of user actions (login, message sent, document uploaded)
-- `messageFeedback` - User feedback on AI responses (helpful/not helpful with optional notes)
-- `documents` - Uploaded file metadata
+- `loginHistory` - User login tracking with timestamps, IP addresses, and user agents
+- `feedbacks` - Message-specific feedback (helpful/not helpful ratings on AI responses)
+- `feedbackSubmissions` - General user feedback with optional file attachments (screenshots, documents)
+- `documents` - Uploaded file metadata with uploadedAt timestamp
 - `documentChunks` - Chunked text with embeddings for vector search
 
 **Data Flow**
@@ -118,9 +122,10 @@ Preferred communication style: Simple, everyday language.
 - Admin visibility into user engagement
 
 **Feedback System**
-- Users can rate AI responses (helpful/not helpful)
-- Optional feedback notes
-- Admin visibility for quality monitoring
+- **Message Ratings** - Users can rate AI responses (helpful/not helpful) with optional notes
+- **General Feedback Submissions** - Users can submit feedback with optional file attachments (screenshots, documents)
+- **Admin Review** - Admins can view all feedback, update status, and download attachments
+- Admin visibility for quality monitoring and issue tracking
 
 ### External Dependencies
 
