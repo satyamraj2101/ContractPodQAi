@@ -1,0 +1,61 @@
+# Dependencies
+node_modules
+
+# Build outputs
+dist
+.vite
+
+# Development files
+.env
+.env.local
+.env.*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# Editor directories and files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+
+# Replit specific
+.replit
+replit.nix
+
+# Testing
+coverage
+*.test.ts
+*.test.js
+**/__tests__
+
+# Documentation
+README.md
+*.md
+!EC2_DEPLOYMENT_GUIDE.md
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Temporary files
+tmp
+temp
+*.tmp
+
+# Uploads and feedback (will be mounted as volumes)
+uploads/*
+feedback/*

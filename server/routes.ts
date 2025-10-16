@@ -292,6 +292,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Auth routes are now in auth.ts
 
+  // Health check endpoint for Docker
+  app.get('/api/health', (_req, res) => {
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
   // Chat message routes
   app.get('/api/chat/history', isAuthenticated, async (req: any, res) => {
     try {
