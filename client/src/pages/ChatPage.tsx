@@ -49,6 +49,7 @@ interface Message {
     url: string;
   }>;
   timestamp: string;
+  noRelevantInfo?: boolean;
 }
 
 interface Document {
@@ -150,7 +151,8 @@ export default function ChatPage() {
         timestamp: new Date(data.assistantMessage.timestamp).toLocaleTimeString('en-US', { 
           hour: 'numeric', 
           minute: '2-digit' 
-        })
+        }),
+        noRelevantInfo: data.noRelevantInfo
       };
       
       setMessages(prev => [...prev, userMsg, aiMsg]);
@@ -533,7 +535,7 @@ export default function ChatPage() {
                       exit={{ opacity: 0, y: -20 }}
                       transition={{ duration: 0.3, ease: "easeOut" }}
                     >
-                      <ChatMessage {...message} />
+                      <ChatMessage {...message} onOpenFeedback={() => setIsFeedbackDialogOpen(true)} />
                     </motion.div>
                   ))}
                 </AnimatePresence>

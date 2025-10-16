@@ -433,6 +433,7 @@ Current question: ${question}`;
         role: 'assistant',
         content: aiResponse,
         sources: sources.length > 0 ? sources : null,
+        noRelevantInfo: !hasRelevantContext,
       });
 
       // Update conversation's updatedAt timestamp
@@ -446,6 +447,7 @@ Current question: ${question}`;
         userMessage,
         assistantMessage,
         conversationId: conversation.id,
+        noRelevantInfo: !hasRelevantContext,
       });
     } catch (error: any) {
       console.error("Error processing chat message:", error);

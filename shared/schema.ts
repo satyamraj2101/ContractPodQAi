@@ -201,6 +201,7 @@ export const chatMessages = pgTable("chat_messages", {
   role: varchar("role").notNull(), // 'user' or 'assistant'
   content: text("content").notNull(),
   sources: jsonb("sources"), // Array of source citations
+  noRelevantInfo: boolean("no_relevant_info").default(false), // Flag for when AI has no relevant answer
   timestamp: timestamp("timestamp").defaultNow().notNull(),
 }, (table) => [
   index("idx_chat_messages_conversation_id").on(table.conversationId),

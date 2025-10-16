@@ -1,4 +1,4 @@
-import { FileText, ExternalLink, User, Bot, ThumbsUp, ThumbsDown } from "lucide-react";
+import { FileText, ExternalLink, User, Bot, ThumbsUp, ThumbsDown, MessageSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
@@ -19,9 +19,11 @@ interface ChatMessageProps {
   sources?: SourceCitation[];
   timestamp: string;
   id?: string;
+  noRelevantInfo?: boolean;
+  onOpenFeedback?: () => void;
 }
 
-export function ChatMessage({ role, content, sources, timestamp, id }: ChatMessageProps) {
+export function ChatMessage({ role, content, sources, timestamp, id, noRelevantInfo, onOpenFeedback }: ChatMessageProps) {
   const isUser = role === "user";
   const { toast } = useToast();
   const [feedback, setFeedback] = useState<"helpful" | "not_helpful" | null>(null);
@@ -109,7 +111,7 @@ export function ChatMessage({ role, content, sources, timestamp, id }: ChatMessa
         )}
 
         {/* Feedback buttons for assistant messages */}
-        {!isUser && id && (
+        {!isUser && id && !noRelevantInfo && (
           <div className="flex items-center gap-2 mt-3">
             <span className="text-xs text-muted-foreground">Was this helpful?</span>
             <div className="flex gap-1">
@@ -133,6 +135,32 @@ export function ChatMessage({ role, content, sources, timestamp, id }: ChatMessa
               >
                 <ThumbsDown className="w-3.5 h-3.5" />
               </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Information not found message with feedback button */}
+        {!isUser && noRelevantInfo && onOpenFeedback && (
+          <div className="mt-4 p-4 bg-muted/30 border border-border rounded-lg">
+            <div className="flex items-start gap-3">
+              <MessageSquare className="w-5 h-5 text-muted-foreground mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-foreground mb-1">
+                  Information Not Found
+                </p>
+                <p className="text-sm text-muted-foreground mb-3">
+                  I couldn't find relevant information in the available documentation. Please consider submitting feedback to help us improve.
+                </p>
+                <Button
+                  size="sm"
+                  variant="default"
+                  onClick={onOpenFeedback}
+                  data-testid="button-submit-feedback"
+                >
+                  <MessageSquare className="w-4 h-4 mr-2" />
+                  Submit Feedback
+                </Button>
+              </div>
             </div>
           </div>
         )}
