@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: contractpodai-docs-assistant:latest
+    image: ${DOCKER_IMAGE:-contractpodai-docs-assistant:latest}
     container_name: contractpodai-app
     restart: unless-stopped
     ports:
