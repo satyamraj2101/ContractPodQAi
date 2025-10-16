@@ -125,7 +125,7 @@ console.log(hash);
 
 ## 🚀 Running the Application
 
-### Development Mode
+### Development Mode (Local)
 
 ```bash
 npm run dev
@@ -133,7 +133,7 @@ npm run dev
 
 The application will start on `http://localhost:5000`
 
-### Production Mode
+### Production Mode (Local)
 
 ```bash
 # Build the application
@@ -141,6 +141,64 @@ npm run build
 
 # Start the production server
 npm start
+```
+
+### 🐳 Docker Deployment
+
+#### Prerequisites
+- Docker and Docker Compose installed
+- `.env` file configured (copy from `.env.example`)
+
+#### Local Development with Docker
+
+```bash
+# Copy environment template
+cp .env.example .env
+
+# Edit .env with your database and API credentials
+nano .env
+
+# Build and start containers
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop containers
+docker-compose down
+```
+
+#### Production Deployment (AWS EC2 + RDS)
+
+For comprehensive production deployment instructions, see:
+- **[EC2 Deployment Guide](./EC2_DEPLOYMENT_GUIDE.md)** - Complete AWS deployment walkthrough
+- **[GitHub Actions Setup](./.github/GITHUB_ACTIONS_SETUP.md)** - CI/CD automation
+
+**Quick Production Setup:**
+
+1. **AWS RDS**: Create PostgreSQL database
+2. **AWS ECR**: Create Docker image repository
+3. **AWS EC2**: Launch Ubuntu instance with Docker
+4. **Deploy Application**:
+   ```bash
+   # On EC2 instance
+   export DOCKER_IMAGE=<account-id>.dkr.ecr.us-east-1.amazonaws.com/contractpodai-docs-assistant:latest
+   docker-compose up -d
+   ```
+5. **Initialize Database**: Run migrations (see [Database Migration section](./EC2_DEPLOYMENT_GUIDE.md#database-migration) in EC2 guide)
+
+**What's Included:**
+- ✅ Multi-stage Dockerfile for optimized builds
+- ✅ Docker Compose with persistent volumes
+- ✅ Automated CI/CD with GitHub Actions
+- ✅ Health checks and logging
+- ✅ Backup and restore procedures
+- ✅ SSL/TLS configuration guides
+- ✅ Monitoring and alerting setup
+
+**Architecture:**
+```
+AWS EC2 (Docker Container) + AWS RDS (PostgreSQL) + Named Volumes (uploads, feedback)
 ```
 
 ## 📁 Project Structure
@@ -157,11 +215,22 @@ contractpodai-docs-assistant/
 │   ├── auth.ts               # Authentication logic
 │   ├── routes.ts             # API route handlers
 │   ├── storage.ts            # Database operations
+│   ├── gemini-failover.ts    # AI model failover system
 │   ├── index.ts              # Server entry point
 │   └── vite.ts               # Vite integration
 ├── shared/                    # Shared code between frontend/backend
 │   └── schema.ts             # Database schema (Drizzle ORM)
+├── .github/                   # GitHub Actions CI/CD
+│   ├── workflows/
+│   │   └── deploy-to-ec2.yml # Automated deployment workflow
+│   └── GITHUB_ACTIONS_SETUP.md
 ├── uploads/                   # Uploaded document storage
+├── feedback/                  # Feedback attachment storage
+├── Dockerfile                 # Production Docker image
+├── docker-compose.yml         # Docker orchestration
+├── .dockerignore             # Docker build exclusions
+├── .env.example              # Environment template
+├── EC2_DEPLOYMENT_GUIDE.md   # AWS deployment guide
 ├── design_guidelines.md       # UI/UX design specifications
 ├── replit.md                 # Project documentation
 └── package.json              # Dependencies and scripts
@@ -187,18 +256,32 @@ After creating your admin user, log in using:
 
 ### Backend
 - **Express.js** with TypeScript
-- **PostgreSQL** (Neon serverless)
+- **PostgreSQL** (Neon serverless or AWS RDS)
 - **Drizzle ORM** for database queries
 - **Google Gemini AI** for embeddings and chat
 - **Session-based authentication**
 - **Multer** for file uploads
 
 ### AI/ML
-- **Google Gemini API**:
-  - `gemini-2.5-flash` for chat responses
-  - `gemini-2.0-flash-exp` for image descriptions
-  - `text-embedding-004` for vector embeddings
+- **Google Gemini API** with automatic failover:
+  - `gemini-2.0-flash-exp` (primary, 1500 RPM)
+  - `gemini-2.0-flash-thinking-exp-01-21` (fallback)
+  - `gemini-1.5-flash` (fallback)
+  - `gemini-1.5-flash-8b` (fallback)
+  - `gemini-1.5-pro` (final fallback)
+- **Text embeddings**: `text-embedding-004`
 - **Vector similarity search** with 0.6 threshold
+- **RAG (Retrieval Augmented Generation)** for context-aware responses
+
+### DevOps & Infrastructure
+- **Docker** for containerization
+- **Docker Compose** for local development
+- **AWS EC2** for compute (Ubuntu + Docker)
+- **AWS RDS** for production PostgreSQL
+- **AWS ECR** for Docker image registry
+- **GitHub Actions** for CI/CD automation
+- **Nginx** for reverse proxy (optional)
+- **Let's Encrypt** for SSL/TLS (optional)
 
 ## 🎯 Usage Guide
 
