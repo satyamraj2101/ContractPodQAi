@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { 
   Users, 
@@ -118,6 +118,12 @@ export default function AdminPanel() {
   const [userCurrentPage, setUserCurrentPage] = useState(1);
   const [userPageSize, setUserPageSize] = useState(10);
 
+  // Document management filters and pagination
+  const [docSearchQuery, setDocSearchQuery] = useState("");
+  const [docTypeFilter, setDocTypeFilter] = useState<string>("all");
+  const [docCurrentPage, setDocCurrentPage] = useState(1);
+  const [docPageSize, setDocPageSize] = useState(10);
+
   // Fetch all users
   const { data: users = [], isLoading: usersLoading } = useQuery<any[]>({
     queryKey: ["/api/admin/users"],
@@ -148,6 +154,13 @@ export default function AdminPanel() {
     userCurrentPage * userPageSize
   );
 
+  // Clamp user current page when total pages changes
+  useEffect(() => {
+    if (totalPages > 0 && userCurrentPage > totalPages) {
+      setUserCurrentPage(totalPages);
+    }
+  }, [totalPages, userCurrentPage]);
+
   // Fetch password reset requests
   const { data: resetRequests = [], isLoading: requestsLoading } = useQuery<any[]>({
     queryKey: ["/api/admin/password-resets"],
@@ -172,6 +185,34 @@ export default function AdminPanel() {
   const { data: documents = [], isLoading: documentsLoading } = useQuery<any[]>({
     queryKey: ["/api/documents"],
   });
+
+  // Filter and paginate documents
+  const filteredDocuments = documents.filter((doc: any) => {
+    const matchesSearch = docSearchQuery === "" || 
+      doc.originalFilename.toLowerCase().includes(docSearchQuery.toLowerCase());
+    
+    const matchesType = docTypeFilter === "all" || 
+      doc.fileType.toLowerCase() === docTypeFilter.toLowerCase();
+    
+    return matchesSearch && matchesType;
+  });
+
+  const totalDocuments = filteredDocuments.length;
+  const totalDocPages = Math.ceil(totalDocuments / docPageSize);
+  const paginatedDocuments = filteredDocuments.slice(
+    (docCurrentPage - 1) * docPageSize,
+    docCurrentPage * docPageSize
+  );
+
+  // Clamp document current page when total pages changes
+  useEffect(() => {
+    if (totalDocPages > 0 && docCurrentPage > totalDocPages) {
+      setDocCurrentPage(totalDocPages);
+    }
+  }, [totalDocPages, docCurrentPage]);
+
+  // Get unique file types for filter
+  const uniqueFileTypes = Array.from(new Set(documents.map((doc: any) => doc.fileType)));
 
   // Create user mutation
   const createUserForm = useForm<CreateUserForm>({
@@ -993,28 +1034,60 @@ export default function AdminPanel() {
                 </Button>
               </CardHeader>
               <CardContent>
+                {/* Search and Filter Controls */}
+                <div className="flex flex-col md:flex-row gap-4 mb-6">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search by filename..."
+                      value={docSearchQuery}
+                      onChange={(e) => {
+                        setDocSearchQuery(e.target.value);
+                        setDocCurrentPage(1);
+                      }}
+                      className="pl-9"
+                      data-testid="input-doc-search"
+                    />
+                  </div>
+                  <Select value={docTypeFilter} onValueChange={(value: string) => {
+                    setDocTypeFilter(value);
+                    setDocCurrentPage(1);
+                  }}>
+                    <SelectTrigger className="w-full md:w-40" data-testid="select-doc-type-filter">
+                      <SelectValue placeholder="File Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Types</SelectItem>
+                      {uniqueFileTypes.map((type: string) => (
+                        <SelectItem key={type} value={type}>{type.toUpperCase()}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 {documentsLoading ? (
                   <div className="text-center py-8 text-muted-foreground">Loading documents...</div>
-                ) : documents.length === 0 ? (
+                ) : filteredDocuments.length === 0 ? (
                   <div className="text-center py-12 text-muted-foreground">
                     <FileText className="w-16 h-16 mx-auto mb-4 opacity-20" />
-                    <p className="text-lg font-medium mb-2">No documents uploaded</p>
-                    <p className="text-sm">Upload documents to build the AI knowledge base</p>
+                    <p className="text-lg font-medium mb-2">No documents found</p>
+                    <p className="text-sm">{documents.length === 0 ? "Upload documents to build the AI knowledge base" : "Try adjusting your search or filter"}</p>
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Filename</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Size</TableHead>
-                        <TableHead>Upload Date</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {documents.map((doc: any) => (
+                  <>
+                    <div className="overflow-x-auto">
+                      <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Filename</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Size</TableHead>
+                          <TableHead>Upload Date</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {paginatedDocuments.map((doc: any) => (
                         <TableRow key={doc.id} data-testid={`row-document-${doc.id}`}>
                           <TableCell className="font-medium" data-testid={`text-filename-${doc.id}`}>
                             <div className="flex items-center gap-2">
@@ -1034,20 +1107,82 @@ export default function AdminPanel() {
                             {format(new Date(doc.uploadDate), "MMM d, yyyy")}
                           </TableCell>
                           <TableCell>
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => setDeleteDocumentId(doc.id)}
-                              data-testid={`button-delete-document-${doc.id}`}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => window.open(`/api/documents/${doc.id}`, '_blank')}
+                                data-testid={`button-download-document-${doc.id}`}
+                              >
+                                <Download className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => setDeleteDocumentId(doc.id)}
+                                data-testid={`button-delete-document-${doc.id}`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                   </div>
+
+                  {/* Pagination Controls */}
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-6">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">
+                        Showing {((docCurrentPage - 1) * docPageSize) + 1} to {Math.min(docCurrentPage * docPageSize, totalDocuments)} of {totalDocuments} documents
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">Rows per page:</span>
+                        <Select value={docPageSize.toString()} onValueChange={(value) => {
+                          setDocPageSize(Number(value));
+                          setDocCurrentPage(1);
+                        }}>
+                          <SelectTrigger className="w-20" data-testid="select-doc-page-size">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="5">5</SelectItem>
+                            <SelectItem value="10">10</SelectItem>
+                            <SelectItem value="20">20</SelectItem>
+                            <SelectItem value="50">50</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setDocCurrentPage(p => Math.max(1, p - 1))}
+                          disabled={docCurrentPage === 1}
+                          data-testid="button-doc-prev-page"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </Button>
+                        <span className="text-sm px-2" data-testid="text-doc-page-info">
+                          Page {docCurrentPage} of {totalDocPages}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setDocCurrentPage(p => Math.min(totalDocPages, p + 1))}
+                          disabled={docCurrentPage === totalDocPages}
+                          data-testid="button-doc-next-page"
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  </>
                 )}
               </CardContent>
             </Card>
