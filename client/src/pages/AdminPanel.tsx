@@ -15,6 +15,9 @@ import {
   Upload,
   Download,
   Paperclip,
+  Search,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -50,6 +53,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useForm } from "react-hook-form";
@@ -106,11 +110,43 @@ export default function AdminPanel() {
   const [reviewAction, setReviewAction] = useState<"approve" | "reject" | null>(null);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [deleteDocumentId, setDeleteDocumentId] = useState<string | null>(null);
+  
+  // User management filters and pagination
+  const [userSearchQuery, setUserSearchQuery] = useState("");
+  const [userStatusFilter, setUserStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [userRoleFilter, setUserRoleFilter] = useState<"all" | "admin" | "user">("all");
+  const [userCurrentPage, setUserCurrentPage] = useState(1);
+  const [userPageSize, setUserPageSize] = useState(10);
 
   // Fetch all users
   const { data: users = [], isLoading: usersLoading } = useQuery<any[]>({
     queryKey: ["/api/admin/users"],
   });
+
+  // Filter and paginate users
+  const filteredUsers = users.filter((user: any) => {
+    const matchesSearch = userSearchQuery === "" || 
+      `${user.firstName} ${user.lastName}`.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+      user.email.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+      (user.employeeId && user.employeeId.toLowerCase().includes(userSearchQuery.toLowerCase()));
+    
+    const matchesStatus = userStatusFilter === "all" || 
+      (userStatusFilter === "active" && user.isActive) ||
+      (userStatusFilter === "inactive" && !user.isActive);
+    
+    const matchesRole = userRoleFilter === "all" || 
+      (userRoleFilter === "admin" && user.isAdmin) ||
+      (userRoleFilter === "user" && !user.isAdmin);
+    
+    return matchesSearch && matchesStatus && matchesRole;
+  });
+
+  const totalUsers = filteredUsers.length;
+  const totalPages = Math.ceil(totalUsers / userPageSize);
+  const paginatedUsers = filteredUsers.slice(
+    (userCurrentPage - 1) * userPageSize,
+    userCurrentPage * userPageSize
+  );
 
   // Fetch password reset requests
   const { data: resetRequests = [], isLoading: requestsLoading } = useQuery<any[]>({
@@ -491,25 +527,69 @@ export default function AdminPanel() {
                 </Dialog>
               </CardHeader>
               <CardContent>
+                {/* Search and Filter Controls */}
+                <div className="flex flex-col md:flex-row gap-4 mb-6">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search by name, email, or employee ID..."
+                      value={userSearchQuery}
+                      onChange={(e) => {
+                        setUserSearchQuery(e.target.value);
+                        setUserCurrentPage(1);
+                      }}
+                      className="pl-9"
+                      data-testid="input-user-search"
+                    />
+                  </div>
+                  <Select value={userStatusFilter} onValueChange={(value: any) => {
+                    setUserStatusFilter(value);
+                    setUserCurrentPage(1);
+                  }}>
+                    <SelectTrigger className="w-full md:w-40" data-testid="select-status-filter">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={userRoleFilter} onValueChange={(value: any) => {
+                    setUserRoleFilter(value);
+                    setUserCurrentPage(1);
+                  }}>
+                    <SelectTrigger className="w-full md:w-40" data-testid="select-role-filter">
+                      <SelectValue placeholder="Role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Roles</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="user">User</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 {usersLoading ? (
                   <div className="text-center py-8 text-muted-foreground">Loading users...</div>
-                ) : users.length === 0 ? (
+                ) : filteredUsers.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">No users found</div>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Employee ID</TableHead>
-                        <TableHead>Role</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {users.map((user: any) => (
+                  <>
+                    <div className="overflow-x-auto">
+                      <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead>Employee ID</TableHead>
+                          <TableHead>Role</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {paginatedUsers.map((user: any) => (
                         <TableRow key={user.id} data-testid={`row-user-${user.id}`}>
                           <TableCell className="font-medium">
                             {user.firstName} {user.lastName}
@@ -561,6 +641,58 @@ export default function AdminPanel() {
                     </TableBody>
                   </Table>
                   </div>
+
+                  {/* Pagination Controls */}
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-6">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">
+                        Showing {((userCurrentPage - 1) * userPageSize) + 1} to {Math.min(userCurrentPage * userPageSize, totalUsers)} of {totalUsers} users
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">Rows per page:</span>
+                        <Select value={userPageSize.toString()} onValueChange={(value) => {
+                          setUserPageSize(Number(value));
+                          setUserCurrentPage(1);
+                        }}>
+                          <SelectTrigger className="w-20" data-testid="select-page-size">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="5">5</SelectItem>
+                            <SelectItem value="10">10</SelectItem>
+                            <SelectItem value="20">20</SelectItem>
+                            <SelectItem value="50">50</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setUserCurrentPage(p => Math.max(1, p - 1))}
+                          disabled={userCurrentPage === 1}
+                          data-testid="button-prev-page"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </Button>
+                        <span className="text-sm px-2" data-testid="text-page-info">
+                          Page {userCurrentPage} of {totalPages}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setUserCurrentPage(p => Math.min(totalPages, p + 1))}
+                          disabled={userCurrentPage === totalPages}
+                          data-testid="button-next-page"
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  </>
                 )}
               </CardContent>
             </Card>
