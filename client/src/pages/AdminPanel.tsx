@@ -13,6 +13,8 @@ import {
   AlertCircle,
   FileText,
   Upload,
+  Download,
+  Paperclip,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -123,6 +125,11 @@ export default function AdminPanel() {
   // Fetch feedback
   const { data: feedbacks = [], isLoading: feedbacksLoading } = useQuery<any[]>({
     queryKey: ["/api/admin/feedback"],
+  });
+
+  // Fetch general feedback submissions
+  const { data: feedbackSubmissions = [], isLoading: feedbackSubmissionsLoading } = useQuery<any[]>({
+    queryKey: ["/api/admin/feedback-submissions"],
   });
 
   // Fetch documents
@@ -279,6 +286,32 @@ export default function AdminPanel() {
       toast({
         title: "Document deleted",
         description: "Document has been deleted successfully.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Update feedback submission status mutation
+  const updateFeedbackStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      const res = await apiRequest("PATCH", `/api/admin/feedback-submissions/${id}/status`, { status });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to update status");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/feedback-submissions"] });
+      toast({
+        title: "Status Updated",
+        description: "Feedback submission status has been updated.",
       });
     },
     onError: (error: Error) => {
@@ -716,6 +749,97 @@ export default function AdminPanel() {
                           </p>
                         </CardContent>
                       </Card>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* General Feedback Submissions */}
+            <Card>
+              <CardHeader>
+                <CardTitle>General Feedback Submissions</CardTitle>
+                <CardDescription>Review user feedback with optional file attachments</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {feedbackSubmissionsLoading ? (
+                  <div className="text-center py-8 text-muted-foreground">Loading submissions...</div>
+                ) : feedbackSubmissions.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <MessageSquare className="w-12 h-12 mx-auto mb-2 opacity-20" />
+                    <p>No feedback submissions yet</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {feedbackSubmissions.map((submission: any) => (
+                      <div key={submission.id} data-testid={`card-submission-${submission.id}`} className="p-4 rounded-md border border-border bg-card">
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">
+                                {submission.user?.firstName} {submission.user?.lastName}
+                              </span>
+                              <Badge variant={
+                                submission.status === "pending" ? "secondary" :
+                                submission.status === "reviewed" ? "default" :
+                                "outline"
+                              } data-testid={`badge-status-${submission.id}`}>
+                                {submission.status}
+                              </Badge>
+                              {submission.attachmentPath && (
+                                <Badge variant="outline" data-testid={`badge-attachment-${submission.id}`}>
+                                  <Paperclip className="w-3 h-3 mr-1" />
+                                  Attachment
+                                </Badge>
+                              )}
+                            </div>
+                            <span className="text-sm text-muted-foreground">
+                              {format(new Date(submission.submittedAt), "MMM d, yyyy")}
+                            </span>
+                          </div>
+                          
+                          <p className="text-sm" data-testid={`text-submission-${submission.id}`}>
+                            {submission.feedbackText}
+                          </p>
+                          
+                          <div className="flex gap-2">
+                            {submission.attachmentPath && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => window.open(`/api/admin/feedback-submissions/${submission.id}/download`, '_blank')}
+                                data-testid={`button-download-${submission.id}`}
+                              >
+                                <Download className="w-4 h-4 mr-2" />
+                                Download
+                              </Button>
+                            )}
+                            {submission.status === "pending" && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  onClick={() => updateFeedbackStatusMutation.mutate({ id: submission.id, status: "reviewed" })}
+                                  disabled={updateFeedbackStatusMutation.isPending}
+                                  data-testid={`button-mark-reviewed-${submission.id}`}
+                                >
+                                  <CheckCircle className="w-4 h-4 mr-2" />
+                                  Mark Reviewed
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => updateFeedbackStatusMutation.mutate({ id: submission.id, status: "resolved" })}
+                                  disabled={updateFeedbackStatusMutation.isPending}
+                                  data-testid={`button-mark-resolved-${submission.id}`}
+                                >
+                                  <CheckCircle className="w-4 h-4 mr-2" />
+                                  Mark Resolved
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
