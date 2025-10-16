@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Bot, Menu, Trash2, Loader2 } from "lucide-react";
+import { Bot, Menu, Trash2, Loader2, MessageSquare, Upload, X } from "lucide-react";
 import { ChatMessage } from "@/components/ChatMessage";
 import { ChatInput } from "@/components/ChatInput";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
@@ -27,6 +27,10 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { LogOut, User, Shield } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -68,6 +72,12 @@ export default function ChatPage() {
   });
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Feedback dialog state
+  const [isFeedbackDialogOpen, setIsFeedbackDialogOpen] = useState(false);
+  const [feedbackText, setFeedbackText] = useState("");
+  const [feedbackFile, setFeedbackFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Save sidebar state to localStorage
   useEffect(() => {
@@ -189,6 +199,98 @@ export default function ChatPage() {
       });
     },
   });
+
+  // Feedback submission mutation
+  const feedbackMutation = useMutation({
+    mutationFn: async () => {
+      const formData = new FormData();
+      formData.append("feedbackText", feedbackText);
+      if (feedbackFile) {
+        formData.append("attachment", feedbackFile);
+      }
+      
+      const res = await fetch("/api/feedback-submission", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      
+      if (!res.ok) {
+        throw new Error("Failed to submit feedback");
+      }
+      
+      return await res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Feedback Submitted",
+        description: "Thank you for your feedback! We'll review it shortly.",
+      });
+      setIsFeedbackDialogOpen(false);
+      setFeedbackText("");
+      setFeedbackFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to submit feedback. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSubmitFeedback = () => {
+    if (!feedbackText.trim()) {
+      toast({
+        title: "Feedback Required",
+        description: "Please enter your feedback before submitting.",
+        variant: "destructive",
+      });
+      return;
+    }
+    feedbackMutation.mutate();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Check file size (10MB limit)
+      if (file.size > 10 * 1024 * 1024) {
+        toast({
+          title: "File Too Large",
+          description: "Please select a file smaller than 10MB.",
+          variant: "destructive",
+        });
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
+        return;
+      }
+      setFeedbackFile(file);
+    }
+  };
+
+  const handleRemoveFile = () => {
+    setFeedbackFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleCloseFeedbackDialog = (open: boolean) => {
+    setIsFeedbackDialogOpen(open);
+    if (!open) {
+      // Clear form when closing dialog
+      setFeedbackText("");
+      setFeedbackFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
 
   // Load conversation messages into state
   useEffect(() => {
@@ -397,6 +499,10 @@ export default function ChatPage() {
                     Admin Panel
                   </DropdownMenuItem>
                 )}
+                <DropdownMenuItem onClick={() => setIsFeedbackDialogOpen(true)} data-testid="button-feedback">
+                  <MessageSquare className="w-4 h-4 mr-2" />
+                  Send Feedback
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout} data-testid="button-logout">
                   <LogOut className="w-4 h-4 mr-2" />
@@ -459,6 +565,97 @@ export default function ChatPage() {
           />
         </div>
       </div>
+      
+      {/* Feedback Dialog */}
+      <Dialog open={isFeedbackDialogOpen} onOpenChange={handleCloseFeedbackDialog}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Send Feedback</DialogTitle>
+            <DialogDescription>
+              Share your thoughts, report issues, or suggest improvements. You can optionally attach screenshots or documents.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="feedback-text">Your Feedback</Label>
+              <Textarea
+                id="feedback-text"
+                data-testid="textarea-feedback"
+                placeholder="Tell us about your experience, report a bug, or suggest a feature..."
+                value={feedbackText}
+                onChange={(e) => setFeedbackText(e.target.value)}
+                className="min-h-32 resize-none"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="feedback-file">Attachment (Optional)</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  ref={fileInputRef}
+                  id="feedback-file"
+                  data-testid="input-feedback-file"
+                  type="file"
+                  onChange={handleFileChange}
+                  className="hidden"
+                  accept=".jpg,.jpeg,.png,.gif,.pdf,.doc,.docx,.txt"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => document.getElementById('feedback-file')?.click()}
+                  data-testid="button-attach-file"
+                  className="w-full"
+                >
+                  <Upload className="w-4 h-4 mr-2" />
+                  {feedbackFile ? feedbackFile.name : "Choose File"}
+                </Button>
+                {feedbackFile && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleRemoveFile}
+                    data-testid="button-remove-file"
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Max file size: 10MB. Supported formats: Images, PDF, Word, Text
+              </p>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleCloseFeedbackDialog(false)}
+              data-testid="button-cancel-feedback"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSubmitFeedback}
+              disabled={feedbackMutation.isPending}
+              data-testid="button-submit-feedback"
+            >
+              {feedbackMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                "Submit Feedback"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
