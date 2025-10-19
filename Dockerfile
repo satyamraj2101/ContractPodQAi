@@ -1,59 +1,43 @@
-# Multi-stage build for ContractPodAI Documentation Assistant
-# Stage 1: Build stage
+# Stage 1: Builder
 FROM node:20-alpine AS builder
-
 WORKDIR /app
 
-# Copy package files for dependency installation
-COPY package.json package-lock.json ./
-
-# Install ALL dependencies (needed for build)
+# Install dependencies
+COPY package*.json ./
 RUN npm ci
 
-# Copy only necessary source directories for build
+# Copy source code
 COPY client ./client
 COPY server ./server
 COPY shared ./shared
 COPY vite.config.ts tsconfig.json tailwind.config.ts postcss.config.js ./
-COPY index.html ./
 
-# Build both frontend (Vite) and backend (esbuild)
-# Frontend → dist/ (static assets)
-# Backend → dist/index.js (compiled server with external packages)
+# Build the project (client + server)
 RUN npm run build
 
-# Stage 2: Production image
+# Stage 2: Production
 FROM node:20-alpine
-
 WORKDIR /app
 
+# Use production environment
 ENV NODE_ENV=production
 
-# Copy package files and install production dependencies only
-COPY package.json package-lock.json ./
-RUN npm ci --only=production && npm cache clean --force
+# Copy package.json and install production dependencies
+COPY package*.json ./
+RUN npm ci --only=production
 
-# Copy built artifacts from builder stage
-# dist/ contains: frontend static assets + compiled server
+# Copy build output from builder
 COPY --from=builder /app/dist ./dist
 
-# The compiled server has external packages, so we need node_modules
-# which we just installed with --only=production above
+# Create directories and set ownership to 'node'
+RUN mkdir -p /app/uploads /app/feedback \
+    && chown -R node:node /app/uploads /app/feedback
 
-# Create directories for uploads and feedback with proper permissions
-RUN mkdir -p /app/uploads /app/feedback && \
-    chown -R node:node /app
-
-# Switch to non-root user for security
+# Switch to non-root user
 USER node
 
-# Expose port 5000
+# Expose the application port
 EXPOSE 5000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:5000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
-
-# Start the application using the compiled server
-# npm start runs: NODE_ENV=production node dist/index.js
+# Start the server
 CMD ["npm", "start"]

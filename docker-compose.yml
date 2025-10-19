@@ -10,48 +10,47 @@ services:
     restart: unless-stopped
     ports:
       - "5000:5000"
-    
-    # Volume mounts for persistent data (named volumes for proper permissions)
+
+    # Volume mounts for persistent uploads and feedback
     volumes:
       - uploads-data:/app/uploads
       - feedback-data:/app/feedback
-    
-    # Environment variables (use .env file in production)
+
+    # Environment variables
     environment:
-      # Node environment
-      - NODE_ENV=production
-      
-      # Database connection (AWS RDS PostgreSQL)
-      - DATABASE_URL=${DATABASE_URL}
-      - PGHOST=${PGHOST}
-      - PGPORT=${PGPORT:-5432}
-      - PGUSER=${PGUSER}
-      - PGPASSWORD=${PGPASSWORD}
-      - PGDATABASE=${PGDATABASE}
-      
+      NODE_ENV: production
+
+      # Database connection
+      DATABASE_URL: ${DATABASE_URL}
+      PGHOST: ${PGHOST}
+      PGPORT: ${PGPORT:-5432}
+      PGUSER: ${PGUSER}
+      PGPASSWORD: ${PGPASSWORD}
+      PGDATABASE: ${PGDATABASE}
+
       # API Keys
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+
       # Session secret
-      - SESSION_SECRET=${SESSION_SECRET}
-    
-    # Health check
+      SESSION_SECRET: ${SESSION_SECRET}
+
+    # Healthcheck
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:5000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-    
+
     # Logging configuration
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
-    
-    # Resource limits (adjust based on EC2 instance size)
+
+    # Resource limits
     deploy:
       resources:
         limits:
@@ -61,8 +60,7 @@ services:
           cpus: '0.5'
           memory: 512M
 
-# Named volumes for persistent data storage
-# Docker manages these volumes with proper permissions for the node user
+# Named volumes for persistent storage
 volumes:
   uploads-data:
     driver: local
